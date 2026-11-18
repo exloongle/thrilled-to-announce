@@ -146,7 +146,7 @@ async def test_tier1_f1_02_welcome_endpoint_concise_greeting_and_two_starters_ev
         kw in greeting.lower()
         for kw in ("linkedin", "convert", "turn", "translate", "post", "means")
     )
-    assert len(welcome.starter_prompts) == 2
+    assert len(welcome.starter_prompts) == 4
 
 
 @pytest.mark.tier1
@@ -239,13 +239,21 @@ async def test_tier1_f1_06_starter_prompts_cover_bidirectional_human_and_linkedi
     resp = await e2e_client.get("/api/welcome")
     assert resp.status_code == 200
     welcome = WelcomeResponse.model_validate(resp.json())
-    p0, p1 = welcome.starter_prompts
-    assert 10 <= len(p0) <= 300
-    assert 10 <= len(p1) <= 300
-    assert any(w in p0.lower() for w in ("tired", "boring", "company", "job", "work"))
+    assert len(welcome.starter_prompts) == 4
+    h0, h1, l0, l1 = welcome.starter_prompts
+    for p in (h0, h1, l0, l1):
+        assert 10 <= len(p) <= 300
     assert any(
-        w in p1.lower()
-        for w in ("thrilled", "synerg", "fractional", "chapter", "announce", "humbled")
+        w in (h0 + " " + h1).lower()
+        for w in ("micromanag", "quitting", "burned out", "meetings", "tired", "boss")
+    )
+    assert any(
+        w in l0.lower()
+        for w in ("humbled", "thrilled", "synerg", "fractional", "chapter", "announce")
+    )
+    assert any(
+        w in l1.lower()
+        for w in ("4:45", "net dollar", "coffee shop", "agree", "saas")
     )
 
 

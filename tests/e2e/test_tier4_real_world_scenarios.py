@@ -58,7 +58,7 @@ async def test_tier4_01_burned_out_ic_career_rebrand_across_sessions(
     welcome = WelcomeResponse.model_validate(
         (await e2e_client.get("/api/welcome")).json()
     )
-    assert len(welcome.starter_prompts) == 2
+    assert len(welcome.starter_prompts) == 4
 
     suite_a_prompts = [
         (

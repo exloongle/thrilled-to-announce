@@ -136,7 +136,7 @@ async def _execute_cases(
         if case.get("kind") == "welcome":
             res = await client.get("/api/welcome")
             body = res.json()
-            if res.status_code != 200 or len(body.get("starter_prompts", [])) != 2:
+            if res.status_code != 200 or len(body.get("starter_prompts", [])) != 4:
                 ok = False
                 failure_reasons.append("welcome endpoint mismatch")
         elif case.get("kind") == "telemetry":

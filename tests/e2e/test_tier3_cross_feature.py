@@ -350,7 +350,8 @@ async def test_tier3_08_f1_x_f5_welcome_starter_chips_and_new_chat_reset_preserv
     welcome = WelcomeResponse.model_validate(
         (await e2e_client.get("/api/welcome")).json()
     )
-    chip_human, chip_linkedin = welcome.starter_prompts
+    chip_human = welcome.starter_prompts[0]
+    chip_linkedin = welcome.starter_prompts[2]
 
     s1_turn1 = await e2e_client.post(
         "/api/chat",

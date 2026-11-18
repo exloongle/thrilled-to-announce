@@ -82,10 +82,15 @@ _WELCOME_PAYLOAD = WelcomeResponse(
         "announcement—or paste a LinkedIn post and I'll tell you what it really means."
     ),
     starter_prompts=[
-        "I am tired of my current company and just wanted to find something not that boring",
+        "My boss micromanages every line of code and changes priorities every Tuesday—I need out",
+        "I'm quitting to take 3 months off and sleep because 2-hour status meetings burned me out",
         (
-            "Thrilled to announce that after 4 impactful years driving synergistic "
+            "Humbled and honored to announce that after 4 impactful years driving synergistic "
             "transformation, I'm stepping back to explore fractional advisory horizons!"
+        ),
+        (
+            "Yesterday at 4:45 AM my 3-year-old asked why SaaS net dollar retention matters "
+            "more than ARR. Everyone in the coffee shop clapped. Agree?"
         ),
     ],
 )

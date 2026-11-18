@@ -23,8 +23,10 @@
     greeting:
       "Hi! Send me a blunt thought and I'll turn it into a polished LinkedIn announcement—or paste a LinkedIn post and I'll tell you what it really means.",
     starter_prompts: [
-      "I am tired of my current company and just wanted to find something not that boring",
-      "Thrilled to announce that after 4 impactful years driving synergistic transformation, I'm stepping back to explore fractional advisory horizons!",
+      "My boss micromanages every line of code and changes priorities every Tuesday—I need out",
+      "I'm quitting to take 3 months off and sleep because 2-hour status meetings burned me out",
+      "Humbled and honored to announce that after 4 impactful years driving synergistic transformation, I'm stepping back to explore fractional advisory horizons!",
+      "Yesterday at 4:45 AM my 3-year-old asked why SaaS net dollar retention matters more than ARR. Everyone in the coffee shop clapped. Agree?",
     ],
   };
 
@@ -87,7 +89,7 @@
   function formatChipLabel(promptText) {
     const trimmed = promptText.trim();
     const unquoted = trimmed.replace(/^["“]+|["”]+$/g, "");
-    const maxLen = 48;
+    const maxLen = 58;
     const display =
       unquoted.length > maxLen ? `${unquoted.slice(0, maxLen).trimEnd()}...` : unquoted;
     return `"${display}"`;
@@ -95,6 +97,21 @@
 
   function stripOuterQuotes(promptText) {
     return promptText.trim().replace(/^["“]+|["”]+$/g, "");
+  }
+
+  function createChipButton(cleanPrompt, index) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "starter-chip";
+    chip.style.setProperty("--chip-index", String(index));
+    chip.textContent = formatChipLabel(cleanPrompt);
+    chip.title = cleanPrompt;
+    chip.addEventListener("click", () => {
+      if (!isSending) {
+        sendMessage(cleanPrompt);
+      }
+    });
+    return chip;
   }
 
   function renderWelcome(welcomeData) {
@@ -113,30 +130,45 @@
     bubble.appendChild(text);
     col.appendChild(bubble);
 
-    const prompts = Array.isArray(welcomeData.starter_prompts)
-      ? welcomeData.starter_prompts
-      : [];
+    const prompts = (
+      Array.isArray(welcomeData.starter_prompts) ? welcomeData.starter_prompts : []
+    )
+      .map((raw) => stripOuterQuotes(String(raw || "")))
+      .filter((clean) => clean.length >= 2);
+
     if (prompts.length > 0) {
       const chipsWrap = document.createElement("div");
       chipsWrap.className = "starter-chips";
 
-      prompts.forEach((rawPrompt) => {
-        const cleanPrompt = stripOuterQuotes(String(rawPrompt || ""));
-        if (cleanPrompt.length < 2) {
-          return;
-        }
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "starter-chip";
-        chip.textContent = formatChipLabel(cleanPrompt);
-        chip.title = cleanPrompt;
-        chip.addEventListener("click", () => {
-          if (!isSending) {
-            sendMessage(cleanPrompt);
-          }
+      if (prompts.length >= 4) {
+        const groups = [
+          { label: "Human → LinkedIn", items: prompts.slice(0, 2) },
+          { label: "LinkedIn → Plain English", items: prompts.slice(2, 4) },
+        ];
+        let chipIndex = 0;
+        groups.forEach((group) => {
+          const groupEl = document.createElement("div");
+          groupEl.className = "starter-group";
+
+          const groupLabel = document.createElement("span");
+          groupLabel.className = "starter-group-label";
+          groupLabel.textContent = group.label;
+          groupEl.appendChild(groupLabel);
+
+          const groupRow = document.createElement("div");
+          groupRow.className = "starter-group-items";
+          group.items.forEach((cleanPrompt) => {
+            groupRow.appendChild(createChipButton(cleanPrompt, chipIndex));
+            chipIndex += 1;
+          });
+          groupEl.appendChild(groupRow);
+          chipsWrap.appendChild(groupEl);
         });
-        chipsWrap.appendChild(chip);
-      });
+      } else {
+        prompts.forEach((cleanPrompt, idx) => {
+          chipsWrap.appendChild(createChipButton(cleanPrompt, idx));
+        });
+      }
 
       if (chipsWrap.childElementCount > 0) {
         col.appendChild(chipsWrap);
@@ -538,6 +570,12 @@
 
   hitlConfirmBtn.addEventListener("click", () => {
     submitHitlDecision(true);
+  });
+
+  hitlOverlay.addEventListener("click", (event) => {
+    if (event.target === hitlOverlay && !hitlCancelBtn.disabled) {
+      submitHitlDecision(false);
+    }
   });
 
   document.addEventListener("keydown", (event) => {
