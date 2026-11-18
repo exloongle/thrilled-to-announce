@@ -17,18 +17,23 @@ from __future__ import annotations
 
 from google.adk.plugins.base_plugin import BasePlugin
 
+from thrilled_to_announce.config.settings import AppSettings
 from thrilled_to_announce.observability.pii_scrubber import PiiScrubber
 from thrilled_to_announce.plugins.policy_plugin import (
+    COACH_REDIRECT_SUGGESTED_REPLIES,
     DOXXING_REFUSAL_TEXT,
     NDA_REFUSAL_TEXT,
     PROMPT_INJECTION_REFUSAL_TEXT,
     BridgeBurnAndNdaPolicyPlugin,
     PolicyDecision,
+    create_model_armor_plugin,
     default_safety_settings,
     evaluate_input_policy,
     evaluate_output_policy,
     evaluate_topic_scope,
     off_topic_coach_redirect,
+    screen_model_response_with_model_armor,
+    screen_user_prompt_with_model_armor,
 )
 from thrilled_to_announce.plugins.telemetry_plugin import (
     IntentOutcomeContext,
@@ -38,17 +43,24 @@ from thrilled_to_announce.plugins.telemetry_plugin import (
 
 
 def create_default_plugins(
-    *, scrubber: PiiScrubber | None = None
+    *,
+    scrubber: PiiScrubber | None = None,
+    settings: AppSettings | None = None,
 ) -> list[BasePlugin]:
-    """Create the ordered default ADK plugin stack (Telemetry first, Policy second)."""
-    return [
+    """Create the ordered default ADK plugin stack (Telemetry, Policy, optional Model Armor)."""
+    plugins: list[BasePlugin] = [
         IntentOutcomeTelemetryPlugin(),
         BridgeBurnAndNdaPolicyPlugin(scrubber=scrubber),
     ]
+    model_armor_plugin = create_model_armor_plugin(settings=settings)
+    if model_armor_plugin is not None:
+        plugins.append(model_armor_plugin)
+    return plugins
 
 
 __all__ = [
     "BridgeBurnAndNdaPolicyPlugin",
+    "COACH_REDIRECT_SUGGESTED_REPLIES",
     "DOXXING_REFUSAL_TEXT",
     "IntentOutcomeContext",
     "IntentOutcomeTelemetryPlugin",
@@ -56,10 +68,13 @@ __all__ = [
     "PROMPT_INJECTION_REFUSAL_TEXT",
     "PolicyDecision",
     "create_default_plugins",
+    "create_model_armor_plugin",
     "default_safety_settings",
     "evaluate_input_policy",
     "evaluate_output_policy",
     "evaluate_topic_scope",
     "off_topic_coach_redirect",
     "record_intent_and_outcome",
+    "screen_model_response_with_model_armor",
+    "screen_user_prompt_with_model_armor",
 ]

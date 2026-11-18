@@ -133,6 +133,21 @@ class AppSettings(BaseModel):
             os.getenv("ENABLE_CLOUD_DLP"), default=False
         )
     )
+    enable_model_armor: bool = Field(
+        default_factory=lambda: _parse_bool(
+            os.getenv("ENABLE_MODEL_ARMOR"), default=False
+        )
+    )
+    model_armor_prompt_template: str | None = Field(
+        default_factory=lambda: _normalize_optional_str(
+            os.getenv("MODEL_ARMOR_PROMPT_TEMPLATE")
+        )
+    )
+    model_armor_response_template: str | None = Field(
+        default_factory=lambda: _normalize_optional_str(
+            os.getenv("MODEL_ARMOR_RESPONSE_TEMPLATE")
+        )
+    )
     enable_tracing: bool = Field(default_factory=_resolve_enable_tracing)
     data_dir: Path = Field(
         default_factory=lambda: Path(
@@ -170,7 +185,13 @@ class AppSettings(BaseModel):
     def _validate_project_id(cls, value: str | None) -> str | None:
         return _normalize_project_id(value)
 
-    @field_validator("session_service_uri", "agent_engine_id", mode="before")
+    @field_validator(
+        "session_service_uri",
+        "agent_engine_id",
+        "model_armor_prompt_template",
+        "model_armor_response_template",
+        mode="before",
+    )
     @classmethod
     def _validate_optional_str(cls, value: str | None) -> str | None:
         return _normalize_optional_str(value)
@@ -217,6 +238,15 @@ class AppSettings(BaseModel):
             )
             or DEFAULT_SECRET_ID,
             enable_cloud_dlp=_parse_bool(environ.get("ENABLE_CLOUD_DLP"), default=False),
+            enable_model_armor=_parse_bool(
+                environ.get("ENABLE_MODEL_ARMOR"), default=False
+            ),
+            model_armor_prompt_template=_normalize_optional_str(
+                environ.get("MODEL_ARMOR_PROMPT_TEMPLATE")
+            ),
+            model_armor_response_template=_normalize_optional_str(
+                environ.get("MODEL_ARMOR_RESPONSE_TEMPLATE")
+            ),
             enable_tracing=_resolve_enable_tracing(environ),
             data_dir=Path(
                 _normalize_optional_str(environ.get("THRILLED_DATA_DIR"))

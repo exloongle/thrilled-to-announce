@@ -41,7 +41,7 @@ def create_adk_app() -> App:
     return App(
         name=settings.app_name,
         root_agent=build_agent_hierarchy(),
-        plugins=create_default_plugins(),
+        plugins=create_default_plugins(settings=settings),
         events_compaction_config=EventsCompactionConfig(
             compaction_interval=4,
             overlap_size=1,

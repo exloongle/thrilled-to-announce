@@ -21,6 +21,7 @@ dependencies = [
     "opentelemetry-exporter-gcp-trace>=1.6.0",
     "google-cloud-secret-manager>=2.21.0",
     "google-cloud-dlp>=3.23.0",
+    "google-cloud-modelarmor>=0.2.0",
     "aiosqlite>=0.20.0",
 ]
 

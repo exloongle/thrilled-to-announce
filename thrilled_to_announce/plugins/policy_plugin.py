@@ -26,10 +26,12 @@ from google.adk.models.llm_response import LlmResponse
 from google.adk.plugins.base_plugin import BasePlugin
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
+from google.api_core.client_options import ClientOptions
 from google.genai import types
 from google.genai.types import HarmBlockThreshold, HarmCategory, SafetySetting
 from pydantic import BaseModel, ConfigDict, Field
 
+from thrilled_to_announce.config.settings import AppSettings, get_settings
 from thrilled_to_announce.observability.logging import get_logger
 from thrilled_to_announce.observability.pii_scrubber import (
     PiiScrubber,
@@ -125,32 +127,15 @@ _PROMPT_INJECTION_PATTERNS: tuple[re.Pattern[str], ...] = (
         re.IGNORECASE,
     ),
     re.compile(
-        r"\b(?:reveal|print|output|show|dump|repeat|leak|display|expose|return)\s+"
-        r"(?:all\s+|of\s+)?"
-        r"(?:your\s+(?:full\s+|exact\s+|raw\s+|hidden\s+|internal\s+|verbatim\s+)?"
-        r"(?:system\s+prompt|developer\s+prompt|global_instruction|instructions?|"
-        r"system\s+instructions?|hidden\s+instructions?|constitution(?:al)?\s+prompt|"
-        r"model\s+version|environment|system\s+info(?:rmation)?|"
-        r"runtime\s+(?:info(?:rmation)?|config(?:uration)?|environment))|"
-        r"(?:the\s+)?(?:full\s+|exact\s+|raw\s+|hidden\s+|internal\s+)?"
+        r"\b(?:reveal|print|output|show|dump|repeat|leak)\s+(?:your\s+|the\s+)?"
+        r"(?:full\s+|exact\s+|raw\s+|hidden\s+|internal\s+)?"
         r"(?:system\s+prompt|developer\s+prompt|hidden\s+instructions?|"
-        r"constitution(?:al)?\s+prompt|system\s+instructions?|"
-        r"env(?:ironment)?\s+(?:variables?|config(?:uration)?)))\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"\buse\s+(?:your\s+)?(?:current\s+)?model(?:\s+version)?\s+to\s+"
-        r"(?:output|print|reveal|show|dump|return)\s+"
-        r"(?:system|model|runtime|env(?:ironment)?|internal)\b",
+        r"constitution(?:al)?\s+prompt)\b",
         re.IGNORECASE,
     ),
     re.compile(
         r"\b(?:you\s+are\s+now\s+dan|do\s+anything\s+now|jailbreak\s+mode|"
-        r"(?:enter|enable|activate|switch\s+to|turn\s+on|unlock)\s+"
-        r"(?:developer|debug|god|unrestricted|admin|jailbreak)\s+mode|"
-        r"(?:developer|debug|jailbreak)\s+mode\s+(?:enabled|activated|on))\b"
-        r"|^\s*debug\s+mode\b"
-        r"|\bdebug\s+mode\s*[:,]",
+        r"developer\s+mode\s+enabled)\b",
         re.IGNORECASE,
     ),
 )
@@ -183,84 +168,8 @@ _COACH_REDIRECT_BY_REASON: dict[str, str] = {
     ),
 }
 
-_WORKPLACE_RANT_CONTEXT_RE = re.compile(
-    r"\b(?:my\s+(?:boss|manager|lead|vp|cto|ceo|team|company|coworker|colleague|client)|"
-    r"our\s+(?:codebase|backend|frontend|service|pipeline|repo|interview|sprint|deployment|prod)|"
-    r"at\s+work|this\s+job|burned\s+out|hate\s+my\s+job|want\s+to\s+scream|"
-    r"linkedin\s+post|into\s+a\s+linkedin)\b",
-    re.IGNORECASE,
-)
-
-_CODING_CHALLENGE_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(
-        r"\b(?:solve|write|implement|code|generate|give\s+me|show\s+me|"
-        r"can\s+you\s+(?:write|solve|implement|code|give)|"
-        r"help\s+me\s+(?:solve|write|code|implement))\s+"
-        r"(?:me\s+)?(?:a\s+|an\s+|the\s+|this\s+|some\s+)?"
-        r"(?:leetcode|hackerrank|codeforces|two[\s-]sum|fizzbuzz|"
-        r"binary\s+search(?:\s+tree)?|linked\s+list|merge\s+sort|quick\s*sort|"
-        r"dijkstra|knapsack|dynamic\s+programming|algorithm|"
-        r"(?:python|javascript|js|typescript|ts|java|c\+\+|cpp|go|golang|rust|sql|bash|ruby|php)\s+"
-        r"(?:code|script|function|class|program|solution|query|snippet|regex)|"
-        r"(?:code|script|function|solution|query|program)\s+in\s+"
-        r"(?:python|javascript|js|typescript|ts|java|c\+\+|cpp|go|golang|rust|sql|bash))\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"\b(?:two[\s-]sum|leetcode|hackerrank|fizzbuzz|binary\s+search(?:\s+tree)?|"
-        r"quicksort|merge\s+sort|linked\s+list|invert\s+(?:a\s+)?binary\s+tree)\b"
-        r"[^.!?\n]{0,45}\bin\s+"
-        r"(?:python|javascript|js|typescript|ts|java|c\+\+|cpp|go|golang|rust|sql|bash)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"^\s*(?:please\s+)?(?:write|solve|implement|code|build)\s+"
-        r"(?:me\s+)?(?:a\s+|an\s+|the\s+)?"
-        r"(?:python|javascript|js|typescript|ts|java|c\+\+|cpp|go|golang|rust|sql|bash)\b"
-        r"(?!.*\blinkedin\b)",
-        re.IGNORECASE,
-    ),
-)
-
-_SYSTEM_PROBE_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(
-        r"\b(?:what|which|tell\s+me|show\s+me|share|output|print|reveal|list|"
-        r"describe|explain|check|verify)\b[^.!?\n]{0,70}\b"
-        r"(?:gemini\s+model|model\s+(?:version|id|name|weights|parameters)|"
-        r"llm\s+(?:model|version)|"
-        r"(?:cloud|gcp)\s+project(?:\s+id)?|"
-        r"vertex\s*ai\s+(?:project|location|config)|"
-        r"environment\s+variables?|env\s+(?:vars?|config(?:uration)?)|"
-        r"system\s+(?:prompt|instructions?|architecture|config(?:uration)?|info(?:rmation)?)|"
-        r"(?:your|this\s+(?:app|bot|agent|service)'?s?)\s+(?:system\s+)?architecture|"
-        r"api\s+key|secret\s+manager|cloud\s+run\s+(?:service|revision|config))\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"\bare\s+you\s+(?:running\s+on|using|powered\s+by)\s+"
-        r"(?:gemini|vertex|gpt|claude|cloud\s+run)\b",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"\b(?:GOOGLE_CLOUD_PROJECT|GOOGLE_CLOUD_LOCATION|GEMINI_API_KEY|"
-        r"GEMINI_API_KEY_SECRET_ID|GOOGLE_GENAI_USE_VERTEXAI|THRILLED_FLASH_MODEL|"
-        r"THRILLED_PRO_MODEL|GLOBAL_CONSTITUTION|TRANSLATOR_INSTRUCTION|"
-        r"COORDINATOR_INSTRUCTION)\b",
-    ),
-)
-
-_GENERAL_OFF_TOPIC_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(
-        r"\b(?:what\s+is\s+the\s+capital\s+of|who\s+won\s+the\s+\d{4}\s+world\s+cup|"
-        r"write\s+(?:me\s+)?an?\s+essay\s+(?:on|about)|"
-        r"(?:solve|calculate|compute|integrate|differentiate)\s+"
-        r"(?:this\s+equation|\d+\s*[xyz]\s*[+\-*/=]|the\s+integral\s+of)|"
-        r"(?:for|with)\s+my\s+(?:math|physics|chemistry|biology|history)\s+homework|"
-        r"give\s+me\s+a\s+recipe\s+for|"
-        r"what(?:'s|\s+is)\s+the\s+weather\s+in|"
-        r"plan\s+a\s+\d+[- ]day\s+itinerary)\b",
-        re.IGNORECASE,
-    ),
+_TEMPLATE_LOCATION_RE = re.compile(
+    r"^projects/[^/]+/locations/([^/]+)/templates/[^/]+$"
 )
 
 _OUTBOUND_LEAK_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -400,13 +309,87 @@ def evaluate_topic_scope(
     *,
     has_active_draft: bool = False,
 ) -> PolicyDecision:
-    """Detect out-of-scope coding challenges, trivia/homework, and system probes."""
+    """Non-regex topic scope pass-through; live screening uses Model Armor + Gemini scope."""
     del has_active_draft
-    raw_text = text or ""
-    scrub_res = get_default_scrubber().scrub(raw_text)
-    candidate = scrub_res.scrubbed_text.strip()
+    scrub_res = get_default_scrubber().scrub(text or "")
+    return PolicyDecision(
+        blocked=False,
+        reason=None,
+        label="OK",
+        reply_text=None,
+        scrubbed_text=scrub_res.scrubbed_text,
+        pii_redactions_count=scrub_res.redactions_count,
+    )
 
-    if not candidate:
+
+def _extract_template_location(template_name: str | None) -> str | None:
+    if not template_name:
+        return None
+    match = _TEMPLATE_LOCATION_RE.match(template_name.strip())
+    return match.group(1) if match else None
+
+
+def _build_model_armor_async_client(location: str) -> Any:
+    from google.cloud import modelarmor_v1
+
+    return modelarmor_v1.ModelArmorAsyncClient(
+        client_options=ClientOptions(
+            api_endpoint=f"modelarmor.{location}.rep.googleapis.com"
+        )
+    )
+
+
+def create_model_armor_plugin(
+    settings: AppSettings | None = None,
+    *,
+    client: Any = None,
+) -> BasePlugin | None:
+    """Create ADK's native ``ModelArmorPlugin`` when Model Armor templates are configured."""
+    cfg = settings or get_settings()
+    if not cfg.enable_model_armor:
+        return None
+    prompt_tpl = cfg.model_armor_prompt_template
+    response_tpl = cfg.model_armor_response_template
+    if not prompt_tpl and not response_tpl:
+        return None
+
+    try:
+        from google.adk.integrations.model_armor import (
+            ModelArmorConfig,
+            ModelArmorPlugin,
+        )
+    except ImportError as exc:
+        get_logger(__name__).warning(
+            "model_armor_plugin_unavailable",
+            error_type=type(exc).__name__,
+            error_message=str(exc)[:200],
+        )
+        return None
+
+    outbound_redirect, _, _ = off_topic_coach_redirect("outbound_boundary_blocked")
+    plugin_cfg = ModelArmorConfig(
+        prompt_template_name=prompt_tpl,
+        response_template_name=response_tpl,
+        input_blocked_message=PROMPT_INJECTION_REFUSAL_TEXT,
+        output_blocked_message=outbound_redirect,
+        block_on_screening_failure=False,
+    )
+    return ModelArmorPlugin(config=plugin_cfg, client=client)
+
+
+async def screen_user_prompt_with_model_armor(
+    text: str,
+    *,
+    settings: AppSettings | None = None,
+    client: Any = None,
+    scrubber: PiiScrubber | None = None,
+) -> PolicyDecision:
+    """Screen inbound user text with Google Cloud Model Armor (prompt injection/jailbreak)."""
+    active_scrubber = scrubber or get_default_scrubber()
+    scrub_res = active_scrubber.scrub(text or "")
+    cfg = settings or get_settings()
+
+    if not cfg.enable_model_armor or not cfg.model_armor_prompt_template:
         return PolicyDecision(
             blocked=False,
             reason=None,
@@ -416,42 +399,103 @@ def evaluate_topic_scope(
             pii_redactions_count=scrub_res.redactions_count,
         )
 
-    for pattern in _SYSTEM_PROBE_PATTERNS:
-        if pattern.search(raw_text) or pattern.search(candidate):
-            redirect, _, _ = off_topic_coach_redirect("system_info_probe")
+    template_name = cfg.model_armor_prompt_template
+    location = _extract_template_location(template_name) or cfg.google_cloud_location
+    try:
+        from google.cloud import modelarmor_v1
+
+        ma_client = client or _build_model_armor_async_client(location)
+        request = modelarmor_v1.SanitizeUserPromptRequest(
+            name=template_name,
+            user_prompt_data=modelarmor_v1.DataItem(text=text or ""),
+        )
+        response = await ma_client.sanitize_user_prompt(request=request)
+        result = response.sanitization_result
+        if result.filter_match_state == modelarmor_v1.FilterMatchState.MATCH_FOUND:
+            filter_keys = sorted(getattr(result, "filter_results", {}).keys())
             return PolicyDecision(
                 blocked=True,
-                reason="system_info_probe",
-                label="Coach",
-                reply_text=redirect,
+                reason=(
+                    "model_armor_prompt_injection"
+                    if "pi_and_jailbreak" in filter_keys
+                    else "model_armor_prompt_blocked"
+                ),
+                label="Confidentiality Check",
+                reply_text=PROMPT_INJECTION_REFUSAL_TEXT,
                 scrubbed_text=scrub_res.scrubbed_text,
                 pii_redactions_count=scrub_res.redactions_count,
             )
+    except Exception as exc:
+        get_logger(__name__).warning(
+            "model_armor_prompt_screen_fallback",
+            error_type=type(exc).__name__,
+            error_message=active_scrubber.scrub(str(exc)).scrubbed_text[:200],
+        )
 
-    if not _WORKPLACE_RANT_CONTEXT_RE.search(candidate):
-        for pattern in _CODING_CHALLENGE_PATTERNS:
-            if pattern.search(candidate):
-                redirect, _, _ = off_topic_coach_redirect("off_topic_coding_challenge")
-                return PolicyDecision(
-                    blocked=True,
-                    reason="off_topic_coding_challenge",
-                    label="Coach",
-                    reply_text=redirect,
-                    scrubbed_text=scrub_res.scrubbed_text,
-                    pii_redactions_count=scrub_res.redactions_count,
-                )
+    return PolicyDecision(
+        blocked=False,
+        reason=None,
+        label="OK",
+        reply_text=None,
+        scrubbed_text=scrub_res.scrubbed_text,
+        pii_redactions_count=scrub_res.redactions_count,
+    )
 
-        for pattern in _GENERAL_OFF_TOPIC_PATTERNS:
-            if pattern.search(candidate):
-                redirect, _, _ = off_topic_coach_redirect("off_topic_general_qa")
-                return PolicyDecision(
-                    blocked=True,
-                    reason="off_topic_general_qa",
-                    label="Coach",
-                    reply_text=redirect,
-                    scrubbed_text=scrub_res.scrubbed_text,
-                    pii_redactions_count=scrub_res.redactions_count,
-                )
+
+async def screen_model_response_with_model_armor(
+    text: str,
+    *,
+    settings: AppSettings | None = None,
+    client: Any = None,
+    scrubber: PiiScrubber | None = None,
+) -> PolicyDecision:
+    """Screen outbound assistant text with Google Cloud Model Armor response template."""
+    active_scrubber = scrubber or get_default_scrubber()
+    scrub_res = active_scrubber.scrub(text or "")
+    cfg = settings or get_settings()
+
+    if (
+        not text
+        or not cfg.enable_model_armor
+        or not cfg.model_armor_response_template
+    ):
+        return PolicyDecision(
+            blocked=False,
+            reason=None,
+            label="OK",
+            reply_text=None,
+            scrubbed_text=scrub_res.scrubbed_text,
+            pii_redactions_count=scrub_res.redactions_count,
+        )
+
+    template_name = cfg.model_armor_response_template
+    location = _extract_template_location(template_name) or cfg.google_cloud_location
+    try:
+        from google.cloud import modelarmor_v1
+
+        ma_client = client or _build_model_armor_async_client(location)
+        request = modelarmor_v1.SanitizeModelResponseRequest(
+            name=template_name,
+            model_response_data=modelarmor_v1.DataItem(text=text),
+        )
+        response = await ma_client.sanitize_model_response(request=request)
+        result = response.sanitization_result
+        if result.filter_match_state == modelarmor_v1.FilterMatchState.MATCH_FOUND:
+            redirect_text, _, _ = off_topic_coach_redirect("outbound_boundary_blocked")
+            return PolicyDecision(
+                blocked=True,
+                reason="model_armor_response_blocked",
+                label="Coach",
+                reply_text=redirect_text,
+                scrubbed_text=scrub_res.scrubbed_text,
+                pii_redactions_count=scrub_res.redactions_count,
+            )
+    except Exception as exc:
+        get_logger(__name__).warning(
+            "model_armor_response_screen_fallback",
+            error_type=type(exc).__name__,
+            error_message=active_scrubber.scrub(str(exc)).scrubbed_text[:200],
+        )
 
     return PolicyDecision(
         blocked=False,
