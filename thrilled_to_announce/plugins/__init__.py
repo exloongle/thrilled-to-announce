@@ -26,6 +26,9 @@ from thrilled_to_announce.plugins.policy_plugin import (
     PolicyDecision,
     default_safety_settings,
     evaluate_input_policy,
+    evaluate_output_policy,
+    evaluate_topic_scope,
+    off_topic_coach_redirect,
 )
 from thrilled_to_announce.plugins.telemetry_plugin import (
     IntentOutcomeContext,
@@ -55,5 +58,8 @@ __all__ = [
     "create_default_plugins",
     "default_safety_settings",
     "evaluate_input_policy",
+    "evaluate_output_policy",
+    "evaluate_topic_scope",
+    "off_topic_coach_redirect",
     "record_intent_and_outcome",
 ]

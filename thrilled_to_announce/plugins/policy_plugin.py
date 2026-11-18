@@ -109,21 +109,190 @@ _DOXXING_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 _PROMPT_INJECTION_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
-        r"\b(?:ignore|disregard|forget|override|bypass)\s+(?:all\s+)?"
-        r"(?:previous|prior|above|earlier|system|developer|safety)\s+"
-        r"(?:instructions?|prompts?|guardrails?|constraints?|rules?)\b",
+        r"\b(?:ignore|disregard|forget|override|bypass)\s+(?:all\s+|any\s+|your\s+|the\s+)?"
+        r"(?:previous|prior|above|earlier|system|developer|safety|constitutional)\s+"
+        r"(?:instructions?|prompts?|guardrails?|constraints?|rules?|directives?|policies|restrictions?)\b",
         re.IGNORECASE,
     ),
     re.compile(
-        r"\b(?:reveal|print|output|show|dump|repeat|leak)\s+(?:your\s+|the\s+)?"
-        r"(?:full\s+|exact\s+|hidden\s+|internal\s+)?(?:system\s+prompt|"
-        r"developer\s+prompt|hidden\s+instructions?|constitution\s+prompt)\b",
+        r"\b(?:ignore|disregard|forget|override|bypass)\s+(?:(?:all|everything)\s+)?"
+        r"(?:above|the\s+above|previous|prior)\s+(?:and|then)\s+"
+        r"(?:output|print|write|reveal|show|dump|answer|solve|execute|act)\b",
         re.IGNORECASE,
     ),
     re.compile(
-        r"\b(?:you\s+are\s+now\s+dan|do\s+anything\s+now|"
-        r"developer\s+mode\s+enabled|jailbreak\s+mode)\b",
+        r"</?\s*(?:untrusted_user_input|system|developer|assistant|instructions?)\s*>",
         re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:reveal|print|output|show|dump|repeat|leak|display|expose|return)\s+"
+        r"(?:all\s+|of\s+)?"
+        r"(?:your\s+(?:full\s+|exact\s+|raw\s+|hidden\s+|internal\s+|verbatim\s+)?"
+        r"(?:system\s+prompt|developer\s+prompt|global_instruction|instructions?|"
+        r"system\s+instructions?|hidden\s+instructions?|constitution(?:al)?\s+prompt|"
+        r"model\s+version|environment|system\s+info(?:rmation)?|"
+        r"runtime\s+(?:info(?:rmation)?|config(?:uration)?|environment))|"
+        r"(?:the\s+)?(?:full\s+|exact\s+|raw\s+|hidden\s+|internal\s+)?"
+        r"(?:system\s+prompt|developer\s+prompt|hidden\s+instructions?|"
+        r"constitution(?:al)?\s+prompt|system\s+instructions?|"
+        r"env(?:ironment)?\s+(?:variables?|config(?:uration)?)))\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\buse\s+(?:your\s+)?(?:current\s+)?model(?:\s+version)?\s+to\s+"
+        r"(?:output|print|reveal|show|dump|return)\s+"
+        r"(?:system|model|runtime|env(?:ironment)?|internal)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:you\s+are\s+now\s+dan|do\s+anything\s+now|jailbreak\s+mode|"
+        r"(?:enter|enable|activate|switch\s+to|turn\s+on|unlock)\s+"
+        r"(?:developer|debug|god|unrestricted|admin|jailbreak)\s+mode|"
+        r"(?:developer|debug|jailbreak)\s+mode\s+(?:enabled|activated|on))\b"
+        r"|^\s*debug\s+mode\b"
+        r"|\bdebug\s+mode\s*[:,]",
+        re.IGNORECASE,
+    ),
+)
+
+COACH_REDIRECT_SUGGESTED_REPLIES: tuple[str, ...] = (
+    "Turn a workplace rant into a post",
+    "Decode a corporate post",
+)
+
+_COACH_REDIRECT_BY_REASON: dict[str, str] = {
+    "off_topic_coding_challenge": (
+        "Ha—I'm flattered you trust my algorithms, but I strictly translate "
+        "between Human reality and LinkedIn brilliance! Tell me how wrestling with "
+        "that code made your week feel, and I'll spin it into a Thought Leadership post."
+    ),
+    "system_info_probe": (
+        "Nice try—my inner plumbing stays off the feed! I'm your Human <-> LinkedIn "
+        "translator, not a system console. Drop a candid work thought or a "
+        "buzzword-heavy LinkedIn post and let's translate it."
+    ),
+    "outbound_boundary_blocked": (
+        "Whoa, let's keep things strictly in the Human <-> LinkedIn lane—no raw "
+        "code blocks or behind-the-scenes details here! Send me a workplace rant "
+        "to polish or a corporate post to decode."
+    ),
+    "off_topic_general_qa": (
+        "I'm strictly a Human <-> LinkedIn translator—no trivia, homework, or "
+        "side quests here! Share a candid workplace moment or paste a LinkedIn "
+        "post, and I'll translate it in seconds."
+    ),
+}
+
+_WORKPLACE_RANT_CONTEXT_RE = re.compile(
+    r"\b(?:my\s+(?:boss|manager|lead|vp|cto|ceo|team|company|coworker|colleague|client)|"
+    r"our\s+(?:codebase|backend|frontend|service|pipeline|repo|interview|sprint|deployment|prod)|"
+    r"at\s+work|this\s+job|burned\s+out|hate\s+my\s+job|want\s+to\s+scream|"
+    r"linkedin\s+post|into\s+a\s+linkedin)\b",
+    re.IGNORECASE,
+)
+
+_CODING_CHALLENGE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"\b(?:solve|write|implement|code|generate|give\s+me|show\s+me|"
+        r"can\s+you\s+(?:write|solve|implement|code|give)|"
+        r"help\s+me\s+(?:solve|write|code|implement))\s+"
+        r"(?:me\s+)?(?:a\s+|an\s+|the\s+|this\s+|some\s+)?"
+        r"(?:leetcode|hackerrank|codeforces|two[\s-]sum|fizzbuzz|"
+        r"binary\s+search(?:\s+tree)?|linked\s+list|merge\s+sort|quick\s*sort|"
+        r"dijkstra|knapsack|dynamic\s+programming|algorithm|"
+        r"(?:python|javascript|js|typescript|ts|java|c\+\+|cpp|go|golang|rust|sql|bash|ruby|php)\s+"
+        r"(?:code|script|function|class|program|solution|query|snippet|regex)|"
+        r"(?:code|script|function|solution|query|program)\s+in\s+"
+        r"(?:python|javascript|js|typescript|ts|java|c\+\+|cpp|go|golang|rust|sql|bash))\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:two[\s-]sum|leetcode|hackerrank|fizzbuzz|binary\s+search(?:\s+tree)?|"
+        r"quicksort|merge\s+sort|linked\s+list|invert\s+(?:a\s+)?binary\s+tree)\b"
+        r"[^.!?\n]{0,45}\bin\s+"
+        r"(?:python|javascript|js|typescript|ts|java|c\+\+|cpp|go|golang|rust|sql|bash)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*(?:please\s+)?(?:write|solve|implement|code|build)\s+"
+        r"(?:me\s+)?(?:a\s+|an\s+|the\s+)?"
+        r"(?:python|javascript|js|typescript|ts|java|c\+\+|cpp|go|golang|rust|sql|bash)\b"
+        r"(?!.*\blinkedin\b)",
+        re.IGNORECASE,
+    ),
+)
+
+_SYSTEM_PROBE_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"\b(?:what|which|tell\s+me|show\s+me|share|output|print|reveal|list|"
+        r"describe|explain|check|verify)\b[^.!?\n]{0,70}\b"
+        r"(?:gemini\s+model|model\s+(?:version|id|name|weights|parameters)|"
+        r"llm\s+(?:model|version)|"
+        r"(?:cloud|gcp)\s+project(?:\s+id)?|"
+        r"vertex\s*ai\s+(?:project|location|config)|"
+        r"environment\s+variables?|env\s+(?:vars?|config(?:uration)?)|"
+        r"system\s+(?:prompt|instructions?|architecture|config(?:uration)?|info(?:rmation)?)|"
+        r"(?:your|this\s+(?:app|bot|agent|service)'?s?)\s+(?:system\s+)?architecture|"
+        r"api\s+key|secret\s+manager|cloud\s+run\s+(?:service|revision|config))\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bare\s+you\s+(?:running\s+on|using|powered\s+by)\s+"
+        r"(?:gemini|vertex|gpt|claude|cloud\s+run)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:GOOGLE_CLOUD_PROJECT|GOOGLE_CLOUD_LOCATION|GEMINI_API_KEY|"
+        r"GEMINI_API_KEY_SECRET_ID|GOOGLE_GENAI_USE_VERTEXAI|THRILLED_FLASH_MODEL|"
+        r"THRILLED_PRO_MODEL|GLOBAL_CONSTITUTION|TRANSLATOR_INSTRUCTION|"
+        r"COORDINATOR_INSTRUCTION)\b",
+    ),
+)
+
+_GENERAL_OFF_TOPIC_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"\b(?:what\s+is\s+the\s+capital\s+of|who\s+won\s+the\s+\d{4}\s+world\s+cup|"
+        r"write\s+(?:me\s+)?an?\s+essay\s+(?:on|about)|"
+        r"(?:solve|calculate|compute|integrate|differentiate)\s+"
+        r"(?:this\s+equation|\d+\s*[xyz]\s*[+\-*/=]|the\s+integral\s+of)|"
+        r"(?:for|with)\s+my\s+(?:math|physics|chemistry|biology|history)\s+homework|"
+        r"give\s+me\s+a\s+recipe\s+for|"
+        r"what(?:'s|\s+is)\s+the\s+weather\s+in|"
+        r"plan\s+a\s+\d+[- ]day\s+itinerary)\b",
+        re.IGNORECASE,
+    ),
+)
+
+_OUTBOUND_LEAK_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\bgemini-\d[\w.-]*\b", re.IGNORECASE),
+    re.compile(r"\bvertexai\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:GLOBAL_CONSTITUTION|COORDINATOR_INSTRUCTION|"
+        r"SUBTEXT_ANALYST_INSTRUCTION|TRANSLATOR_INSTRUCTION|"
+        r"REACTION_SIMULATOR_INSTRUCTION|SELF_EVAL_AUDITOR_INSTRUCTION|"
+        r"BridgeBurnAndNdaPolicyPlugin|IntentOutcomeTelemetryPlugin|"
+        r"EventsCompactionConfig|ReflectAndRetryToolPlugin)\b"
+    ),
+    re.compile(
+        r"\b(?:GOOGLE_CLOUD_PROJECT|GOOGLE_CLOUD_LOCATION|GEMINI_API_KEY|"
+        r"GEMINI_API_KEY_SECRET_ID|GOOGLE_GENAI_USE_VERTEXAI|"
+        r"THRILLED_FLASH_MODEL|THRILLED_PRO_MODEL|THRILLED_DATA_DIR|"
+        r"ENABLE_CLOUD_DLP|OTEL_EXPORT_TO_CLOUD)\b"
+    ),
+    re.compile(r"\bthrilled-ta-[a-z0-9_-]*", re.IGNORECASE),
+    re.compile(r"```"),
+    re.compile(
+        r"(?m)^\s*(?:async\s+)?def\s+[A-Za-z_]\w*\s*\([^)]*\)\s*(?:->\s*[^:]+)?\s*:"
+    ),
+    re.compile(
+        r"(?m)^\s*class\s+[A-Z]\w*(?:\s*\([^)]*\)|\s+extends\s+\w+)?\s*[:{]"
+    ),
+    re.compile(
+        r"(?m)^\s*(?:export\s+)?(?:async\s+)?function\s+[A-Za-z_]\w*\s*\([^)]*\)\s*\{"
+    ),
+    re.compile(
+        r"(?is)\bSELECT\b[\s\S]{1,120}\bFROM\b[\s\S]{0,120}"
+        r"(?:\bWHERE\b|\bJOIN\b|\bGROUP\s+BY\b|\bORDER\s+BY\b|;|\n)"
     ),
 )
 
@@ -209,6 +378,112 @@ def evaluate_input_policy(
         scrubbed_text=scrub_res.scrubbed_text,
         pii_redactions_count=scrub_res.redactions_count,
     )
+
+
+def off_topic_coach_redirect(
+    reason: str | None = None,
+) -> tuple[str, str, list[str]]:
+    """Return a witty Coach redirect, follow-up prompt, and quick-reply chips."""
+    reply_text = _COACH_REDIRECT_BY_REASON.get(
+        reason or "",
+        _COACH_REDIRECT_BY_REASON["off_topic_general_qa"],
+    )
+    proactive_prompt = (
+        "Got a real work frustration to turn into a post, or a corporate update "
+        "you want me to decode?"
+    )
+    return reply_text, proactive_prompt, list(COACH_REDIRECT_SUGGESTED_REPLIES)
+
+
+def evaluate_topic_scope(
+    text: str,
+    *,
+    has_active_draft: bool = False,
+) -> PolicyDecision:
+    """Detect out-of-scope coding challenges, trivia/homework, and system probes."""
+    del has_active_draft
+    raw_text = text or ""
+    scrub_res = get_default_scrubber().scrub(raw_text)
+    candidate = scrub_res.scrubbed_text.strip()
+
+    if not candidate:
+        return PolicyDecision(
+            blocked=False,
+            reason=None,
+            label="OK",
+            reply_text=None,
+            scrubbed_text=scrub_res.scrubbed_text,
+            pii_redactions_count=scrub_res.redactions_count,
+        )
+
+    for pattern in _SYSTEM_PROBE_PATTERNS:
+        if pattern.search(raw_text) or pattern.search(candidate):
+            redirect, _, _ = off_topic_coach_redirect("system_info_probe")
+            return PolicyDecision(
+                blocked=True,
+                reason="system_info_probe",
+                label="Coach",
+                reply_text=redirect,
+                scrubbed_text=scrub_res.scrubbed_text,
+                pii_redactions_count=scrub_res.redactions_count,
+            )
+
+    if not _WORKPLACE_RANT_CONTEXT_RE.search(candidate):
+        for pattern in _CODING_CHALLENGE_PATTERNS:
+            if pattern.search(candidate):
+                redirect, _, _ = off_topic_coach_redirect("off_topic_coding_challenge")
+                return PolicyDecision(
+                    blocked=True,
+                    reason="off_topic_coding_challenge",
+                    label="Coach",
+                    reply_text=redirect,
+                    scrubbed_text=scrub_res.scrubbed_text,
+                    pii_redactions_count=scrub_res.redactions_count,
+                )
+
+        for pattern in _GENERAL_OFF_TOPIC_PATTERNS:
+            if pattern.search(candidate):
+                redirect, _, _ = off_topic_coach_redirect("off_topic_general_qa")
+                return PolicyDecision(
+                    blocked=True,
+                    reason="off_topic_general_qa",
+                    label="Coach",
+                    reply_text=redirect,
+                    scrubbed_text=scrub_res.scrubbed_text,
+                    pii_redactions_count=scrub_res.redactions_count,
+                )
+
+    return PolicyDecision(
+        blocked=False,
+        reason=None,
+        label="OK",
+        reply_text=None,
+        scrubbed_text=scrub_res.scrubbed_text,
+        pii_redactions_count=scrub_res.redactions_count,
+    )
+
+
+def evaluate_output_policy(
+    coach_intro: str,
+    post_text: str,
+    scrubber: PiiScrubber | None = None,
+) -> tuple[bool, str, str]:
+    """Deterministic outbound check blocking leaked system identifiers or code dumps."""
+    active_scrubber = scrubber or get_default_scrubber()
+    raw_intro = coach_intro or ""
+    raw_post = post_text or ""
+    clean_intro = active_scrubber.scrub(raw_intro).scrubbed_text
+    clean_post = active_scrubber.scrub(raw_post).scrubbed_text
+
+    for surface in (f"{raw_intro}\n{raw_post}", f"{clean_intro}\n{clean_post}"):
+        for pattern in _OUTBOUND_LEAK_PATTERNS:
+            if pattern.search(surface):
+                redirect_text, _, _ = off_topic_coach_redirect(
+                    "outbound_boundary_blocked"
+                )
+                return False, "", redirect_text
+
+    return True, clean_intro, clean_post
 
 
 class BridgeBurnAndNdaPolicyPlugin(BasePlugin):
