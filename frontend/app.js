@@ -286,7 +286,8 @@
       res.label || (res.guardrail_blocked ? "Confidentiality Check" : "");
     const showVisibleLabel =
       Boolean(labelText) &&
-      (Boolean(res.guardrail_blocked) || labelText !== "LinkedIn Style");
+      (Boolean(res.guardrail_blocked) ||
+        (labelText !== "LinkedIn Style" && labelText !== "Coach"));
 
     if (showVisibleLabel) {
       const labelEl = document.createElement("span");
@@ -314,9 +315,18 @@
       card.appendChild(metaRow);
     }
 
+    const coachIntro = String(res.coach_intro || "").trim();
+    if (coachIntro) {
+      const introEl = document.createElement("p");
+      introEl.className = "coach-intro";
+      introEl.textContent = coachIntro;
+      card.appendChild(introEl);
+    }
+
     const replyText = String(res.reply_text || "");
     const bodyEl = document.createElement("p");
-    bodyEl.className = "reply-text";
+    bodyEl.className =
+      res.can_post_to_linkedin && coachIntro ? "reply-text is-draft-quote" : "reply-text";
     bodyEl.textContent = replyText;
     card.appendChild(bodyEl);
 
@@ -324,8 +334,10 @@
       lastLinkedinDraft = replyText;
     }
 
+    const isCoachChatOnly = labelText === "Coach" && !res.can_post_to_linkedin;
     const showCopy =
       !res.guardrail_blocked &&
+      !isCoachChatOnly &&
       replyText.trim().length > 0 &&
       (Boolean(res.can_post_to_linkedin) || res.detected_style !== "PUBLISH_REQUEST");
 
@@ -361,7 +373,44 @@
       card.appendChild(actionsRow);
     }
 
-    row.appendChild(card);
+    const proactiveText = String(res.proactive_prompt || "").trim();
+    if (proactiveText && !res.guardrail_blocked) {
+      const proactiveEl = document.createElement("p");
+      proactiveEl.className = "proactive-prompt";
+      proactiveEl.textContent = proactiveText;
+      card.appendChild(proactiveEl);
+    }
+
+    const suggestions = Array.isArray(res.suggested_replies)
+      ? res.suggested_replies.filter((s) => String(s || "").trim().length > 0)
+      : [];
+    if (suggestions.length > 0 && !res.guardrail_blocked) {
+      const replyCol = document.createElement("div");
+      replyCol.className = "assistant-reply-col";
+      replyCol.appendChild(card);
+
+      const quickWrap = document.createElement("div");
+      quickWrap.className = "quick-replies";
+      suggestions.slice(0, 3).forEach((s, idx) => {
+        const textVal = String(s).trim();
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "quick-reply-chip";
+        chip.style.setProperty("--chip-index", String(idx));
+        chip.textContent = textVal;
+        chip.addEventListener("click", () => {
+          if (!isSending) {
+            sendMessage(textVal);
+          }
+        });
+        quickWrap.appendChild(chip);
+      });
+      replyCol.appendChild(quickWrap);
+      row.appendChild(replyCol);
+    } else {
+      row.appendChild(card);
+    }
+
     chatStream.appendChild(row);
     scrollToBottom();
   }
@@ -471,7 +520,7 @@
   }
 
   function dismissStarterChips() {
-    const chips = chatStream.querySelectorAll(".starter-chips");
+    const chips = chatStream.querySelectorAll(".starter-chips, .quick-replies");
     chips.forEach((el) => {
       el.classList.add("is-dismissing");
       window.setTimeout(() => {

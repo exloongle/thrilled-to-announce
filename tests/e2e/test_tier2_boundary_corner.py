@@ -1499,3 +1499,58 @@ async def test_tier2_f3_08_thematic_humor_hashtag_followup_and_no_linkedin_card_
     assert 'labelText !== "LinkedIn Style"' in app_js
     assert "unquoted.slice(0," not in app_js
     assert "dismissStarterChips" in app_js
+
+
+@pytest.mark.tier2
+async def test_tier2_f3_09_default_hashtags_conversational_coach_and_combine_offer(
+    e2e_client: httpx.AsyncClient,
+    unique_user_id: str,
+) -> None:
+    greet = await e2e_client.post(
+        "/api/chat",
+        json={"message": "Hey, how are you doing?", "user_id": unique_user_id},
+    )
+    assert greet.status_code == 200
+    pg = ChatTurnResponse.model_validate(greet.json())
+    assert pg.can_post_to_linkedin is False
+    assert pg.label == "Coach"
+    assert pg.proactive_prompt
+
+    t1 = await e2e_client.post(
+        "/api/chat",
+        json={
+            "message": "My boss keeps changing our sprint scope every morning",
+            "user_id": unique_user_id,
+            "session_id": pg.session_id,
+        },
+    )
+    assert t1.status_code == 200
+    p1 = ChatTurnResponse.model_validate(t1.json())
+    assert p1.detected_style == DetectedStyle.HUMAN_DAILY
+    tags1 = HASHTAG_RE.findall(p1.reply_text)
+    assert 2 <= len(tags1) <= 5
+
+    t2 = await e2e_client.post(
+        "/api/chat",
+        json={
+            "message": "Also our office coffee machine broke and everyone is losing it",
+            "user_id": unique_user_id,
+            "session_id": p1.session_id,
+        },
+    )
+    assert t2.status_code == 200
+    p2 = ChatTurnResponse.model_validate(t2.json())
+    assert p2.proactive_prompt and "combine" in p2.proactive_prompt.lower()
+
+    t3 = await e2e_client.post(
+        "/api/chat",
+        json={
+            "message": "Yes, combine my thoughts",
+            "user_id": unique_user_id,
+            "session_id": p2.session_id,
+        },
+    )
+    assert t3.status_code == 200
+    p3 = ChatTurnResponse.model_validate(t3.json())
+    assert p3.detected_style == DetectedStyle.STYLE_TWEAK
+    assert p3.can_post_to_linkedin is True

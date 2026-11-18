@@ -90,9 +90,10 @@ TWEAK_DRAFT_SHORT_RE = re.compile(
 
 TWEAK_FOLLOWUP_EDIT_RE = re.compile(
     r"(?:"
-    r"^\s*(?:please\s+)?(?:let'?s\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|now\s+)?(?:also\s+)?(?:add|include|append|insert|put|remove|drop|delete|cut|strip|change|replace|swap|adjust|tweak|modify|update|rewrite|rephrase|revise|shorten|expand|soften|polish|spice\s+up|make\s+(?:it|this|that))\b"
+    r"^\s*(?:please\s+)?(?:let'?s\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|now\s+)?(?:also\s+)?(?:add|include|append|insert|put|remove|drop|delete|cut|strip|change|replace|swap|adjust|tweak|modify|update|rewrite|rephrase|revise|shorten|expand|soften|polish|spice\s+up|combine|merge|weave|blend|make\s+(?:it|this|that))\b"
     r"|\b(?:hashtags?|tags?)\s+(?:of|for|about|on)\s+(?:related|relevant|similar|these|those|the)\b"
-    r"|\badd\s+(?:some\s+|a\s+few\s+|more\s+|relevant\s+|related\s+)?(?:hashtags?|tags?|emojis?|humor|wit|a\s+hook|a\s+cta)\b"
+    r"|\badd\s+(?:some\s+|a\s+few\s+|more\s+|relevant\s+|related\s+|extra\s+|additional\s+|linkedin\s+)?(?:hashtags?|tags?|emojis?|humor|wit|a\s+hook|a\s+cta)\b"
+    r"|\b(?:combine|merge|weave|blend|tie|stitch)\s+(?:them|these|those|both|all(?:\s+of\s+(?:them|those))?|my\s+(?:thoughts|sentences|points|ideas))\b"
     r")",
     re.IGNORECASE,
 )

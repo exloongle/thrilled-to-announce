@@ -225,6 +225,9 @@ class ChatTurnResponse(BaseModel):
     detected_style: DetectedStyle
     label: str
     reply_text: str
+    coach_intro: Optional[str] = None
+    proactive_prompt: Optional[str] = None
+    suggested_replies: list[str] = Field(default_factory=list)
     preference_saved: bool = False
     used_saved_preference: bool = False
     can_post_to_linkedin: bool = False

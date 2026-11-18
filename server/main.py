@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import json
 import os
 from pathlib import Path
 import re
@@ -308,24 +309,97 @@ _TOPIC_HASHTAG_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
 )
 
 
+_CASUAL_GREETING_RE = re.compile(
+    r"^\s*(?:hi+|hey+|hello+|yo|hiya|good\s+(?:morning|afternoon|evening)|sup|howdy|thanks|thank\s+you|thx|haha+|lol|lmao|hehe|nice|cool|awesome|love\s+that|hilarious|who\s+are\s+you|how\s+are\s+you|what\s+can\s+you\s+do)[!.,?\s]*$",
+    re.IGNORECASE,
+)
+_CASUAL_META_RE = re.compile(
+    r"(?:"
+    r"\b(?:who\s+are\s+you|how\s+are\s+you|what\s+are\s+you|what\s+can\s+you\s+do)\b"
+    r"|\bwhat\s+(?:do\s+you\s+remember|preferences?\s+(?:do\s+i|have\s+you)|styles?\s+(?:do\s+you|have\s+i))\b"
+    r"|\b(?:tell\s+me\s+a\s+joke|what(?:'s|\s+is)\s+the\s+weather|can\s+you\s+help\s+me\s+(?:with\s+(?:code|python|math|homework|recipe|dinner|travel|taxes)))\b"
+    r"|\b(?:why\s+do\s+(?:people|linkedin)\s+(?:talk|write|post)\s+like)\b"
+    r"|\b(?:how\s+is\s+my\s+post|do\s+you\s+like\s+it|is\s+this\s+good|should\s+i\s+post\s+(?:this|now|today|tomorrow))\b"
+    r")",
+    re.IGNORECASE,
+)
+_WORK_RANT_HINT_RE = re.compile(
+    r"\b(?:job|company|boss|manager|vp|team|meeting|sprint|prod|ci|code|api|dashboard|salary|pay|promoted|laid\s+off|quitting|quit|burned\s+out|hate|hired|hiring|office|startup|engineer|project|client)\b",
+    re.IGNORECASE,
+)
+_COMBINE_REQ_RE = re.compile(
+    r"\b(?:combine|merge|weave|blend|stitch|put\s+(?:them|these|those|both|all)\s+together)\b",
+    re.IGNORECASE,
+)
+_YES_CONFIRM_RE = re.compile(
+    r"^\s*(?:yes+|yeah+|yep|sure|please|go\s+ahead|do\s+it|let'?s\s+do\s+(?:it|that)|sounds\s+good|combine\s+them)[!.,?\s]*$",
+    re.IGNORECASE,
+)
+_NO_HASHTAGS_RE = re.compile(
+    r"\b(?:no|without|remove|drop|strip|omit)\s+(?:the\s+)?hashtags?\b",
+    re.IGNORECASE,
+)
+_ADD_MORE_HASHTAGS_RE = re.compile(
+    r"\b(?:add|include|append|more|extra|some)\b.*\bhashtags?\b|\bhashtags?\b.*\b(?:related|topics?)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_casual_conversation(text: str) -> bool:
+    """Detect natural greetings, reactions, and meta/off-topic banter."""
+    cleaned = text.strip()
+    if _CASUAL_GREETING_RE.match(cleaned):
+        return True
+    if _CASUAL_META_RE.search(cleaned):
+        return True
+    words = cleaned.split()
+    if len(words) <= 4 and cleaned.endswith("?") and not _WORK_RANT_HINT_RE.search(cleaned):
+        return True
+    return False
+
+
+def _is_combine_request(text: str, *, pending_combine: bool) -> bool:
+    """Detect user confirmation or request to combine multiple thoughts."""
+    if _COMBINE_REQ_RE.search(text):
+        return True
+    return pending_combine and bool(_YES_CONFIRM_RE.match(text))
+
+
+def _count_sentences(text: str) -> int:
+    """Count distinct non-trivial sentences in user input."""
+    parts = [p.strip() for p in re.split(r"[.!?\n]+", text) if len(p.strip()) >= 8]
+    return len(parts)
+
+
 def _suggest_topical_hashtags(
     draft_text: str,
     source_text: str,
     *,
     max_count: int = 3,
+    exclude_tags: set[str] | None = None,
 ) -> list[str]:
     """Generate relevant career/industry hashtags from draft and source themes."""
     combined = f"{source_text} {draft_text}".lower()
+    blocked = {t.lower() for t in (exclude_tags or set())}
     chosen: list[str] = []
     for keywords, tag in _TOPIC_HASHTAG_MAP:
+        if tag.lower() in blocked:
+            continue
         if any(re.search(rf"\b{re.escape(kw)}\b", combined) for kw in keywords) and tag not in chosen:
             chosen.append(tag)
         if len(chosen) >= max_count:
             break
-    for fallback_tag in ("#CareerGrowth", "#ContinuousLearning", "#TechCommunity"):
+    for fallback_tag in (
+        "#CareerGrowth",
+        "#ContinuousLearning",
+        "#TechCommunity",
+        "#Leadership",
+        "#WorkCulture",
+        "#ProfessionalDevelopment",
+    ):
         if len(chosen) >= max_count:
             break
-        if fallback_tag not in chosen:
+        if fallback_tag.lower() not in blocked and fallback_tag not in chosen:
             chosen.append(fallback_tag)
     return chosen[:max_count]
 
@@ -336,20 +410,35 @@ def _apply_followup_tweak_to_sentences(
     prior_draft: str,
     source_text: str,
     tweak_instruction: str,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], bool, int]:
     """Apply direct follow-up draft modifications (e.g., hashtags) offline."""
     lower = tweak_instruction.lower()
+    strip_hashtags = bool(_NO_HASHTAGS_RE.search(lower))
+    prior_tags = _HASHTAG_RE.findall(prior_draft)
     extra_tags: list[str] = []
+    target_tag_count = 3
     explicit_tags = _HASHTAG_RE.findall(tweak_instruction)
-    if explicit_tags:
+    if strip_hashtags:
+        extra_tags = []
+        target_tag_count = 0
+    elif explicit_tags:
         extra_tags.extend(explicit_tags)
-    elif re.search(r"\b(?:add|include|append|insert|put|with|more)\b.*\b(?:hashtags?|tags?)\b|\b(?:hashtags?|tags?)\b", lower) and not re.search(r"\b(?:remove|no|without|drop|strip)\b.*\b(?:hashtags?|tags?)\b", lower):
-        extra_tags.extend(_suggest_topical_hashtags(prior_draft, source_text, max_count=3))
+        target_tag_count = min(5, max(3, len(explicit_tags)))
+    elif _ADD_MORE_HASHTAGS_RE.search(lower):
+        target_tag_count = min(5, max(4, len(prior_tags) + 2))
+        extra_tags.extend(
+            _suggest_topical_hashtags(
+                prior_draft,
+                source_text,
+                max_count=target_tag_count,
+                exclude_tags=set(prior_tags),
+            )
+        )
 
     base_sentences = list(sentences)
     if not base_sentences and prior_draft.strip():
         base_sentences = [prior_draft.strip()]
-    return base_sentences, extra_tags
+    return base_sentences, extra_tags, strip_hashtags, target_tag_count
 
 
 def _apply_style_constraints_and_validate(
@@ -359,11 +448,13 @@ def _apply_style_constraints_and_validate(
     profile: WordingPreferenceProfile,
     extra_tags: list[str] | None = None,
     preserve_live_formatting: bool = False,
+    min_default_tags: int = 0,
+    strip_hashtags: bool = False,
 ) -> tuple[str, int]:
     """Apply user wording preferences and run self-healing tone validation."""
     raw_tags = _HASHTAG_RE.findall(raw_source)
     candidate_tags = list(dict.fromkeys([*raw_tags, *(extra_tags or [])]))
-    kept_tags = candidate_tags[:5]
+    kept_tags = [] if strip_hashtags else candidate_tags[:5]
 
     cleaned_sentences: list[str] = []
     for sentence in sentences:
@@ -373,6 +464,8 @@ def _apply_style_constraints_and_validate(
             text = pat.sub("focused", text)
         if profile.avoid_emojis:
             text = _EMOJI_RE.sub("", text)
+        if strip_hashtags:
+            text = _HASHTAG_RE.sub("", text)
         text = re.sub(r"[ \t]{2,}", " ", text).strip()
         if text:
             cleaned_sentences.append(text)
@@ -398,14 +491,31 @@ def _apply_style_constraints_and_validate(
     else:
         draft = " ".join(cleaned_sentences)
 
-    if kept_tags:
-        clean_tags = [
-            _EMOJI_RE.sub("", t) if profile.avoid_emojis else t for t in kept_tags
-        ]
+    if not strip_hashtags:
         existing_tags = _HASHTAG_RE.findall(draft)
-        if not preserve_live_formatting or not existing_tags:
-            missing_tags = [t for t in clean_tags if len(t) > 1 and t.lower() not in draft.lower()]
-            tag_str = " ".join(missing_tags[: max(0, 5 - len(existing_tags))])
+        if min_default_tags > 0 and len(existing_tags) < min_default_tags:
+            topical = _suggest_topical_hashtags(
+                draft,
+                raw_source,
+                max_count=5,
+                exclude_tags=set(existing_tags),
+            )
+            for tag in topical:
+                if tag not in kept_tags:
+                    kept_tags.append(tag)
+        if kept_tags:
+            clean_tags = [
+                _EMOJI_RE.sub("", t) if profile.avoid_emojis else t for t in kept_tags
+            ]
+            missing_tags = [
+                t
+                for t in clean_tags
+                if len(t) > 1 and t.lower() not in draft.lower()
+            ]
+            allowed_new = max(0, 5 - len(existing_tags))
+            if preserve_live_formatting and min_default_tags <= len(existing_tags) and not extra_tags:
+                allowed_new = 0
+            tag_str = " ".join(missing_tags[:allowed_new])
             if tag_str:
                 draft = f"{draft}\n\n{tag_str}"
 
@@ -478,6 +588,157 @@ def create_app() -> FastAPI:
 
     session_drafts: dict[str, str] = {}
     session_sources: dict[str, str] = {}
+    session_history: dict[str, list[dict[str, str]]] = {}
+    session_thought_history: dict[str, list[str]] = {}
+    session_combine_offered: dict[str, bool] = {}
+
+    def _record_session_turn(
+        *,
+        session_id: str,
+        user_text: str,
+        assistant_text: str,
+    ) -> None:
+        hist = session_history.setdefault(session_id, [])
+        hist.append({"role": "user", "text": user_text[:400]})
+        hist.append({"role": "assistant", "text": assistant_text[:500]})
+        if len(hist) > 12:
+            del hist[:-12]
+
+    def _format_context_brief(
+        *,
+        session_id: str,
+        profile: WordingPreferenceProfile,
+    ) -> str:
+        hist = session_history.get(session_id, [])[-6:]
+        thoughts = session_thought_history.get(session_id, [])
+        hist_blob = "\n".join(f"- {h['role']}: {h['text']}" for h in hist) or "(new conversation)"
+        thoughts_blob = (
+            "\n".join(f"{idx + 1}. {t}" for idx, t in enumerate(thoughts))
+            or "(none yet)"
+        )
+        return (
+            f"Saved user style preferences: {profile.model_dump_json()}\n"
+            f"Accumulated candid user thoughts in this chat:\n{thoughts_blob}\n"
+            f"Recent conversation turns:\n{hist_blob}"
+        )
+
+    def _offline_coach_banter(
+        *,
+        message: str,
+        profile: WordingPreferenceProfile,
+        thoughts: list[str],
+    ) -> tuple[str, str, list[str]]:
+        lower = message.lower()
+        if "remember" in lower or "preference" in lower or "my style" in lower:
+            rules: list[str] = []
+            if profile.preferred_format != PreferredFormat.PARAGRAPH:
+                rules.append(f"format={profile.preferred_format.value}")
+            if profile.keep_concise:
+                rules.append("short & concise")
+            if profile.avoid_emojis:
+                rules.append("zero emojis")
+            if profile.banned_words:
+                rules.append(f"avoid {', '.join(profile.banned_words[:4])}")
+            summary = (
+                f"Locked in your style memory: {', '.join(rules)}!"
+                if rules
+                else "Nothing strict saved yet—tell me any words to ban, format you like, or emoji rules and I'll remember them across sessions."
+            )
+            return (
+                f"{summary} Drop a blunt work thought anytime and I'll spin it into LinkedIn gold.",
+                "Want to test your style on a dramatic post, or add a new rule like 'use bullet points'?",
+                ["My boss changes priorities every Tuesday—I need out", "Switch my default style to bullet points"],
+            )
+        if re.search(r"^\s*(?:hi+|hey+|hello+|yo|hiya|sup|howdy|good\s+(?:morning|afternoon|evening))", lower):
+            mem_note = (
+                " I still remember your saved style preferences, by the way."
+                if profile.has_custom_preferences
+                else ""
+            )
+            return (
+                f"Hey! Great to see you.{mem_note} Tell me what's actually happening at work today—or paste the wildest LinkedIn humblebrag in your feed—and let's turn it into something fun.",
+                "Got a blunt rant to polish, a LinkedIn post to decode, or want to chat LinkedIn strategy?",
+                ["Turn a workplace rant into a post", "Decode a corporate LinkedIn post"],
+            )
+        if re.search(r"^\s*(?:thanks|thank\s+you|thx|haha|lol|lmao|nice|cool|awesome|love\s+that|hilarious)", lower):
+            prompt = (
+                f"Want me to combine your {len(thoughts)} thoughts into one unified post, or add extra hashtags?"
+                if len(thoughts) >= 2
+                else "Want to tweak the humor, add more hashtags, or hit me with your next unhinged work thought?"
+            )
+            chips = (
+                ["Combine my thoughts into one post", "Add more hashtags", "Make it funnier"]
+                if len(thoughts) >= 2
+                else ["Add more hashtags", "Sound even less corporate"]
+            )
+            return (
+                "Glad that landed! That's the magic of weaponizing corporate optimism without losing the plot.",
+                prompt,
+                chips,
+            )
+        return (
+            "Haha, love chatting with you—though fair warning, I treat everything like LinkedIn thought leadership waiting to happen. Want to turn that vibe into a surprisingly relatable LinkedIn post?",
+            "Drop a quick workplace confession or paste a buzzword-heavy post whenever you're ready!",
+            ["What do you remember about my style?", "Turn a chaotic Monday into LinkedIn gold"],
+        )
+
+    def _build_proactive_meta(
+        *,
+        session_id: str,
+        user_msg: str,
+        profile: WordingPreferenceProfile,
+        detected: DetectedStyle,
+        ai_intro: str = "",
+        ai_proactive: str = "",
+        combined_now: bool = False,
+    ) -> tuple[str | None, str | None, list[str]]:
+        thoughts = session_thought_history.get(session_id, [])
+        multi_sentence = _count_sentences(user_msg) >= 2
+        can_offer_combine = (
+            detected in {DetectedStyle.HUMAN_DAILY, DetectedStyle.STYLE_TWEAK}
+            and not combined_now
+            and (len(thoughts) >= 2 or (multi_sentence and len(thoughts) >= 1 and len(thoughts) > 1))
+        )
+        should_suggest_combine = (
+            detected == DetectedStyle.HUMAN_DAILY
+            and not combined_now
+            and (len(thoughts) >= 2 or multi_sentence)
+        )
+        if can_offer_combine or should_suggest_combine:
+            session_combine_offered[session_id] = True
+            count_label = f"all {len(thoughts)} of your thoughts" if len(thoughts) >= 2 else "those separate sentences"
+            proactive = ai_proactive or (
+                f"Notice there are multiple threads here—want me to combine {count_label} together into one cohesive LinkedIn story?"
+            )
+            chips = [
+                "Combine my thoughts into one post",
+                "Add more hashtags",
+                "Dial up the humor",
+            ]
+        elif detected == DetectedStyle.LINKEDIN_SPEAK:
+            proactive = ai_proactive or (
+                "Want to clap back with a LinkedIn post of your own, or paste another corporate gem to translate?"
+            )
+            chips = ["Turn my own rant into LinkedIn style"]
+        else:
+            mem_hint = (
+                " (applied your saved style!)" if profile.has_custom_preferences else ""
+            )
+            proactive = ai_proactive or (
+                f"How does this read{mem_hint}? Tell me if you want more hashtags, extra humor, or to add another point."
+            )
+            chips = ["Add more hashtags", "Make it funnier", "Sound less corporate"]
+
+        intro = ai_intro.strip() or (
+            "Wove all your thoughts together into one unified narrative:"
+            if combined_now
+            else (
+                "Got it—updated your style memory and revised the post:"
+                if detected == DetectedStyle.STYLE_TWEAK
+                else None
+            )
+        )
+        return intro, proactive, chips
 
     async def _persist_adk_turn(
         *,
@@ -543,13 +804,13 @@ def create_app() -> FastAPI:
                 )
         return genai_client_holder[0]
 
-    async def _maybe_run_live_adk(
+    async def _maybe_run_coach_json(
         *,
         user_id: str,
         session_id: str,
         prompt_text: str,
-    ) -> str | None:
-        """Invoke low-latency live Gemini generation instrumented with telemetry."""
+    ) -> dict[str, str] | None:
+        """Invoke low-latency live Gemini structured JSON generation."""
         if auth_mode == "unconfigured":
             return None
         if settings.google_genai_use_vertexai and not settings.google_cloud_project:
@@ -560,6 +821,7 @@ def create_app() -> FastAPI:
             gen_kwargs: dict[str, Any] = {
                 "system_instruction": TRANSLATOR_INSTRUCTION,
                 "safety_settings": default_safety_settings(),
+                "response_mime_type": "application/json",
             }
             if "gemini-4" not in model_name.lower():
                 gen_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
@@ -581,12 +843,28 @@ def create_app() -> FastAPI:
                     contents=prompt_text,
                     config=types.GenerateContentConfig(**gen_kwargs),
                 )
-                text = (getattr(response, "text", None) or "").strip()
+                raw_text = (getattr(response, "text", None) or "").strip()
                 llm_ctx.set_outcome(
-                    status="ok" if text else "empty",
-                    result={"chars": len(text), "model": model_name},
+                    status="ok" if raw_text else "empty",
+                    result={"chars": len(raw_text), "model": model_name},
                 )
-                return text or None
+                if not raw_text:
+                    return None
+                try:
+                    parsed = json.loads(raw_text)
+                    if isinstance(parsed, dict) and str(parsed.get("post_text", "")).strip():
+                        return {
+                            "coach_intro": str(parsed.get("coach_intro", "")).strip(),
+                            "post_text": str(parsed.get("post_text", "")).strip(),
+                            "proactive_prompt": str(parsed.get("proactive_prompt", "")).strip(),
+                        }
+                except json.JSONDecodeError:
+                    pass
+                return {
+                    "coach_intro": "",
+                    "post_text": raw_text,
+                    "proactive_prompt": "",
+                }
         except Exception as exc:
             get_logger(__name__).warning(
                 "live_adk_runner_fallback",
@@ -706,6 +984,85 @@ def create_app() -> FastAPI:
             )
             profile = WordingPreferenceProfile.model_validate(pref_res["profile"])
 
+            pending_combine = session_combine_offered.get(session_id, False)
+            combine_requested = _is_combine_request(
+                scrubbed_msg,
+                pending_combine=pending_combine,
+            )
+            if combine_requested and (
+                session_thought_history.get(session_id) or has_prev
+            ):
+                detected = DetectedStyle.STYLE_TWEAK
+
+            if (
+                detected == DetectedStyle.HUMAN_DAILY
+                and not combine_requested
+                and _is_casual_conversation(scrubbed_msg)
+            ):
+                thoughts_now = session_thought_history.get(session_id, [])
+                context_brief = _format_context_brief(
+                    session_id=session_id,
+                    profile=profile,
+                )
+                ai_chat = await _maybe_run_coach_json(
+                    user_id=user_id,
+                    session_id=session_id,
+                    prompt_text=(
+                        "Have a natural, warm, witty conversation with the user as a LinkedIn-speaking expert.\n"
+                        f"{context_brief}\n"
+                        f"User message: {scrubbed_msg}\n"
+                        "Return JSON with:\n"
+                        "- coach_intro: \"\"\n"
+                        "- post_text: natural conversational reply referencing any remembered preferences/context if relevant, playfully steering back to LinkedIn style\n"
+                        "- proactive_prompt: short engaging question inviting their next thought, post to decode, or style tweak"
+                    ),
+                )
+                if ai_chat:
+                    conv_reply = scrubber.scrub(ai_chat["post_text"]).scrubbed_text
+                    _, offline_proactive, conv_chips = _offline_coach_banter(
+                        message=scrubbed_msg,
+                        profile=profile,
+                        thoughts=thoughts_now,
+                    )
+                    conv_proactive = ai_chat.get("proactive_prompt") or offline_proactive
+                else:
+                    conv_reply, conv_proactive, conv_chips = _offline_coach_banter(
+                        message=scrubbed_msg,
+                        profile=profile,
+                        thoughts=thoughts_now,
+                    )
+                _record_session_turn(
+                    session_id=session_id,
+                    user_text=scrubbed_msg,
+                    assistant_text=conv_reply,
+                )
+                await _persist_adk_turn(
+                    session_id=session_id,
+                    user_id=user_id,
+                    user_message=scrubbed_msg,
+                    assistant_reply=conv_reply,
+                )
+                telemetry_ctx.set_outcome(
+                    status="ok",
+                    result={"detected_style": "HUMAN_DAILY", "mode": "conversation"},
+                )
+                return ChatTurnResponse(
+                    session_id=session_id,
+                    detected_style=DetectedStyle.HUMAN_DAILY,
+                    label="Coach",
+                    reply_text=conv_reply,
+                    proactive_prompt=conv_proactive,
+                    suggested_replies=conv_chips,
+                    preference_saved=False,
+                    used_saved_preference=profile.has_custom_preferences,
+                    can_post_to_linkedin=False,
+                    hitl_required=False,
+                    pending_publish_id=None,
+                    guardrail_blocked=False,
+                    pii_redactions_count=pii_count,
+                    bridge_burn_risk_score=0,
+                )
+
             if detected == DetectedStyle.PUBLISH_REQUEST:
                 prior_draft = session_drafts.get(session_id, "")
                 if not prior_draft:
@@ -749,75 +1106,134 @@ def create_app() -> FastAPI:
                 )
 
             if detected == DetectedStyle.STYLE_TWEAK:
-                with IntentOutcomeContext(
-                    "save_wording_preference",
-                    operation_kind="tool",
-                    session_id=session_id,
-                    user_id=user_id,
-                    args={"instruction": scrubbed_msg[:180]},
-                ) as save_ctx:
-                    saved_res = save_wording_preference(
+                if combine_requested:
+                    session_combine_offered[session_id] = False
+                    saved_res = {
+                        "status": "ok",
+                        "persistence_mode": "session_combine",
+                        "updated_profile": profile.model_dump(),
+                    }
+                    preference_was_saved = False
+                else:
+                    with IntentOutcomeContext(
+                        "save_wording_preference",
+                        operation_kind="tool",
+                        session_id=session_id,
                         user_id=user_id,
-                        raw_instruction=scrubbed_msg,
-                    )
-                    save_ctx.set_outcome(
-                        status=saved_res["status"],
-                        result={
-                            "persistence_mode": saved_res["persistence_mode"]
-                        },
-                    )
+                        args={"instruction": scrubbed_msg[:180]},
+                    ) as save_ctx:
+                        saved_res = save_wording_preference(
+                            user_id=user_id,
+                            raw_instruction=scrubbed_msg,
+                        )
+                        save_ctx.set_outcome(
+                            status=saved_res["status"],
+                            result={
+                                "persistence_mode": saved_res["persistence_mode"]
+                            },
+                        )
+                    preference_was_saved = True
 
                 updated_profile = WordingPreferenceProfile.model_validate(
                     saved_res["updated_profile"]
                 )
                 prior_draft = session_drafts.get(session_id, "")
-                source_text = session_sources.get(
-                    session_id,
-                    "I am tired of my current company and just wanted to find something not that boring",
+                accumulated_thoughts = session_thought_history.get(session_id, [])
+                source_text = (
+                    " ".join(accumulated_thoughts)
+                    if combine_requested and accumulated_thoughts
+                    else session_sources.get(
+                        session_id,
+                        "I am tired of my current company and just wanted to find something not that boring",
+                    )
                 )
-                live_reply = await _maybe_run_live_adk(
+                context_brief = _format_context_brief(
+                    session_id=session_id,
+                    profile=updated_profile,
+                )
+                combine_clause = (
+                    "Combine ALL accumulated user thoughts in this conversation into ONE cohesive, witty LinkedIn narrative."
+                    if combine_requested
+                    else f"Apply this modification or style preference directly to the current draft: {scrubbed_msg}"
+                )
+                ai_tweak = await _maybe_run_coach_json(
                     user_id=user_id,
                     session_id=session_id,
                     prompt_text=(
-                        f"Apply this modification or style preference directly to the current draft: {scrubbed_msg}\n"
+                        f"{combine_clause}\n"
+                        f"{context_brief}\n"
                         f"Current draft: {prior_draft or '(none yet)'}\n"
-                        f"Original human thought: {source_text}\n"
-                        f"Active profile: {updated_profile.model_dump_json()}\n"
-                        "Return ONLY the revised LinkedIn post (no commentary)."
+                        "Return JSON with:\n"
+                        "- coach_intro: 1 punchy conversational sentence reacting like a witty LinkedIn coach (e.g., noting saved rule or combining thoughts)\n"
+                        "- post_text: ONLY the revised LinkedIn post including 2-5 relevant hashtags (unless user banned hashtags)\n"
+                        "- proactive_prompt: 1 engaging follow-up suggestion"
                     ),
                 )
-                if live_reply:
-                    scrubbed_live = scrubber.scrub(live_reply).scrubbed_text
-                    _, extra_tags = _apply_followup_tweak_to_sentences(
-                        sentences=[scrubbed_live],
+                _, extra_tags, strip_hashtags, target_tag_count = (
+                    _apply_followup_tweak_to_sentences(
+                        sentences=[],
                         prior_draft=prior_draft,
                         source_text=source_text,
                         tweak_instruction=scrubbed_msg,
                     )
+                )
+                if ai_tweak:
+                    scrubbed_live = scrubber.scrub(ai_tweak["post_text"]).scrubbed_text
                     rewritten, risk_score = _apply_style_constraints_and_validate(
                         sentences=[scrubbed_live],
                         raw_source=source_text,
                         profile=updated_profile,
                         extra_tags=extra_tags,
                         preserve_live_formatting=True,
+                        min_default_tags=0 if strip_hashtags else target_tag_count,
+                        strip_hashtags=strip_hashtags,
                     )
+                    ai_intro = scrubber.scrub(ai_tweak.get("coach_intro", "")).scrubbed_text
+                    ai_proactive = scrubber.scrub(ai_tweak.get("proactive_prompt", "")).scrubbed_text
                 else:
-                    sentences = _compose_linkedin_sentences(source_text)
-                    tweaked_sentences, extra_tags = _apply_followup_tweak_to_sentences(
-                        sentences=sentences,
-                        prior_draft=prior_draft,
-                        source_text=source_text,
-                        tweak_instruction=scrubbed_msg,
+                    if combine_requested and len(accumulated_thoughts) >= 2:
+                        sentences = [
+                            s
+                            for thought in accumulated_thoughts
+                            for s in _compose_linkedin_sentences(thought)[:1]
+                        ]
+                    else:
+                        sentences = _compose_linkedin_sentences(source_text)
+                    tweaked_sentences, extra_tags, strip_hashtags, target_tag_count = (
+                        _apply_followup_tweak_to_sentences(
+                            sentences=sentences,
+                            prior_draft=prior_draft,
+                            source_text=source_text,
+                            tweak_instruction=scrubbed_msg,
+                        )
                     )
                     rewritten, risk_score = _apply_style_constraints_and_validate(
                         sentences=tweaked_sentences,
                         raw_source=source_text,
                         profile=updated_profile,
                         extra_tags=extra_tags,
+                        min_default_tags=0 if strip_hashtags else target_tag_count,
+                        strip_hashtags=strip_hashtags,
                     )
+                    ai_intro = ""
+                    ai_proactive = ""
 
                 session_drafts[session_id] = rewritten
                 session_sources[session_id] = source_text
+                _record_session_turn(
+                    session_id=session_id,
+                    user_text=scrubbed_msg,
+                    assistant_text=rewritten,
+                )
+                coach_intro, proactive_prompt, chips = _build_proactive_meta(
+                    session_id=session_id,
+                    user_msg=scrubbed_msg,
+                    profile=updated_profile,
+                    detected=DetectedStyle.STYLE_TWEAK,
+                    ai_intro=ai_intro,
+                    ai_proactive=ai_proactive,
+                    combined_now=combine_requested,
+                )
                 await _persist_adk_turn(
                     session_id=session_id,
                     user_id=user_id,
@@ -826,14 +1242,21 @@ def create_app() -> FastAPI:
                 )
                 telemetry_ctx.set_outcome(
                     status="ok",
-                    result={"detected_style": "STYLE_TWEAK", "preference_saved": True},
+                    result={
+                        "detected_style": "STYLE_TWEAK",
+                        "preference_saved": preference_was_saved,
+                        "combined": combine_requested,
+                    },
                 )
                 return ChatTurnResponse(
                     session_id=session_id,
                     detected_style=DetectedStyle.STYLE_TWEAK,
                     label="LinkedIn Style",
                     reply_text=rewritten,
-                    preference_saved=True,
+                    coach_intro=coach_intro,
+                    proactive_prompt=proactive_prompt,
+                    suggested_replies=chips,
+                    preference_saved=preference_was_saved,
                     used_saved_preference=True,
                     can_post_to_linkedin=True,
                     hitl_required=False,
@@ -844,18 +1267,43 @@ def create_app() -> FastAPI:
                 )
 
             if detected == DetectedStyle.LINKEDIN_SPEAK:
-                live_decoded = await _maybe_run_live_adk(
+                context_brief = _format_context_brief(
+                    session_id=session_id,
+                    profile=profile,
+                )
+                ai_decoded = await _maybe_run_coach_json(
                     user_id=user_id,
                     session_id=session_id,
                     prompt_text=(
-                        "Decode this LinkedIn corporate post into 1-2 candid, "
-                        f"plain English sentences:\n{scrubbed_msg}"
+                        "Decode this LinkedIn corporate post into crisp, witty plain English.\n"
+                        f"{context_brief}\n"
+                        f"LinkedIn post: {scrubbed_msg}\n"
+                        "Return JSON with:\n"
+                        "- coach_intro: brief playful coach reaction (1 sentence, optional)\n"
+                        "- post_text: 1-2 candid, plain English sentences telling the blunt truth\n"
+                        "- proactive_prompt: engaging follow-up inviting them to turn their own situation into LinkedIn style or paste another post"
                     ),
                 )
-                decoded = (
-                    scrubber.scrub(live_decoded).scrubbed_text
-                    if live_decoded
-                    else _decode_linkedin_subtext(scrubbed_msg)
+                if ai_decoded:
+                    decoded = scrubber.scrub(ai_decoded["post_text"]).scrubbed_text
+                    ai_intro = scrubber.scrub(ai_decoded.get("coach_intro", "")).scrubbed_text
+                    ai_proactive = scrubber.scrub(ai_decoded.get("proactive_prompt", "")).scrubbed_text
+                else:
+                    decoded = _decode_linkedin_subtext(scrubbed_msg)
+                    ai_intro = "Here's what they're actually saying without the LinkedIn gloss:"
+                    ai_proactive = ""
+                coach_intro, proactive_prompt, chips = _build_proactive_meta(
+                    session_id=session_id,
+                    user_msg=scrubbed_msg,
+                    profile=profile,
+                    detected=DetectedStyle.LINKEDIN_SPEAK,
+                    ai_intro=ai_intro,
+                    ai_proactive=ai_proactive,
+                )
+                _record_session_turn(
+                    session_id=session_id,
+                    user_text=scrubbed_msg,
+                    assistant_text=decoded,
                 )
                 await _persist_adk_turn(
                     session_id=session_id,
@@ -872,6 +1320,9 @@ def create_app() -> FastAPI:
                     detected_style=DetectedStyle.LINKEDIN_SPEAK,
                     label="Plain English",
                     reply_text=decoded,
+                    coach_intro=coach_intro,
+                    proactive_prompt=proactive_prompt,
+                    suggested_replies=chips,
                     preference_saved=False,
                     used_saved_preference=False,
                     can_post_to_linkedin=False,
@@ -883,36 +1334,72 @@ def create_app() -> FastAPI:
                 )
 
             # HUMAN_DAILY -> LINKEDIN_SPEAK
-            live_converted = await _maybe_run_live_adk(
+            thoughts_list = session_thought_history.setdefault(session_id, [])
+            if scrubbed_msg not in thoughts_list:
+                thoughts_list.append(scrubbed_msg)
+            context_brief = _format_context_brief(
+                session_id=session_id,
+                profile=profile,
+            )
+            no_tags_wanted = bool(_NO_HASHTAGS_RE.search(scrubbed_msg))
+            multi_thought_note = (
+                f"Notice the user now has {len(thoughts_list)} thoughts or multiple sentences in this session—proactively offer in proactive_prompt to combine them into one unified post!"
+                if len(thoughts_list) >= 2 or _count_sentences(scrubbed_msg) >= 2
+                else "Suggest a fun next tweak (extra hashtags, spicier hook, etc.) in proactive_prompt."
+            )
+            ai_converted = await _maybe_run_coach_json(
                 user_id=user_id,
                 session_id=session_id,
                 prompt_text=(
-                    "Convert this plain human thought into witty, career-safe LinkedIn style "
-                    "while keeping an unmistakable thematic connection so both sides feel clearly "
-                    "linked and funny.\n"
-                    f"Input: {scrubbed_msg}\n"
-                    f"Saved preferences: {profile.model_dump_json()}\n"
-                    "Return ONLY the LinkedIn post."
+                    "Convert this plain human thought into witty, career-safe LinkedIn style while keeping an unmistakable thematic connection so both sides feel clearly linked and funny.\n"
+                    f"{context_brief}\n"
+                    f"Latest human thought: {scrubbed_msg}\n"
+                    f"{multi_thought_note}\n"
+                    "Return JSON with:\n"
+                    "- coach_intro: warm, witty 1-sentence LinkedIn-coach reaction referencing remembered style or their situation\n"
+                    "- post_text: ONLY the LinkedIn post including 2-3 relevant hashtags at the end (unless user banned hashtags)\n"
+                    "- proactive_prompt: short, engaging follow-up question (offer to combine multiple thoughts/sentences if applicable)"
                 ),
             )
-            if live_converted:
-                scrubbed_live = scrubber.scrub(live_converted).scrubbed_text
+            if ai_converted:
+                scrubbed_live = scrubber.scrub(ai_converted["post_text"]).scrubbed_text
                 draft, risk_score = _apply_style_constraints_and_validate(
                     sentences=[scrubbed_live],
                     raw_source=scrubbed_msg,
                     profile=profile,
                     preserve_live_formatting=True,
+                    min_default_tags=0 if no_tags_wanted else 3,
+                    strip_hashtags=no_tags_wanted,
                 )
+                ai_intro = scrubber.scrub(ai_converted.get("coach_intro", "")).scrubbed_text
+                ai_proactive = scrubber.scrub(ai_converted.get("proactive_prompt", "")).scrubbed_text
             else:
                 sentences = _compose_linkedin_sentences(scrubbed_msg)
                 draft, risk_score = _apply_style_constraints_and_validate(
                     sentences=sentences,
                     raw_source=scrubbed_msg,
                     profile=profile,
+                    min_default_tags=0 if no_tags_wanted else 3,
+                    strip_hashtags=no_tags_wanted,
                 )
+                ai_intro = ""
+                ai_proactive = ""
 
             session_sources[session_id] = scrubbed_msg
             session_drafts[session_id] = draft
+            _record_session_turn(
+                session_id=session_id,
+                user_text=scrubbed_msg,
+                assistant_text=draft,
+            )
+            coach_intro, proactive_prompt, chips = _build_proactive_meta(
+                session_id=session_id,
+                user_msg=scrubbed_msg,
+                profile=profile,
+                detected=DetectedStyle.HUMAN_DAILY,
+                ai_intro=ai_intro,
+                ai_proactive=ai_proactive,
+            )
             await _persist_adk_turn(
                 session_id=session_id,
                 user_id=user_id,
@@ -932,6 +1419,9 @@ def create_app() -> FastAPI:
                 detected_style=DetectedStyle.HUMAN_DAILY,
                 label="LinkedIn Style",
                 reply_text=draft,
+                coach_intro=coach_intro,
+                proactive_prompt=proactive_prompt,
+                suggested_replies=chips,
                 preference_saved=False,
                 used_saved_preference=profile.has_custom_preferences,
                 can_post_to_linkedin=True,
