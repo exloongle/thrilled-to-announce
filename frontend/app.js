@@ -89,10 +89,7 @@
   function formatChipLabel(promptText) {
     const trimmed = promptText.trim();
     const unquoted = trimmed.replace(/^["“]+|["”]+$/g, "");
-    const maxLen = 58;
-    const display =
-      unquoted.length > maxLen ? `${unquoted.slice(0, maxLen).trimEnd()}...` : unquoted;
-    return `"${display}"`;
+    return `"${unquoted}"`;
   }
 
   function stripOuterQuotes(promptText) {

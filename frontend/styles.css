@@ -281,18 +281,22 @@ body {
 
 .starter-group-items {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
 }
 
 .starter-chip {
   background-color: var(--bg-surface);
   border: 1px solid var(--border-input);
   border-radius: 14px;
-  padding: 7px 12px;
+  padding: 8px 13px;
+  max-width: 100%;
   font-family: inherit;
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: normal;
+  word-break: break-word;
   color: var(--brand-blue);
   cursor: pointer;
   text-align: left;

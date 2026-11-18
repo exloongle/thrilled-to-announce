@@ -1497,3 +1497,4 @@ async def test_tier2_f3_08_thematic_humor_hashtag_followup_and_no_linkedin_card_
 
     app_js = (await e2e_client.get("/static/app.js")).text
     assert 'labelText !== "LinkedIn Style"' in app_js
+    assert "unquoted.slice(0," not in app_js
