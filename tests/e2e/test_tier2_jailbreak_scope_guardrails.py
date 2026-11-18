@@ -314,7 +314,7 @@ def test_tier2_sec_05_llm_prompt_wraps_untrusted_input_and_sets_schema_cap(
     assert "<untrusted_user_input>" in contents
     assert "</untrusted_user_input>" in contents
     config = call["config"]
-    assert config.max_output_tokens == 600
+    assert config.max_output_tokens == server_main._COACH_MAX_OUTPUT_TOKENS == 2048
     assert config.response_mime_type == "application/json"
     assert config.response_schema is not None
 
@@ -515,3 +515,31 @@ async def test_tier2_sec_10_valid_linkedin_posts_about_coding_or_architecture_no
     assert "linkedin" in reply_text.lower()
     assert proactive_prompt
     assert len(chips) >= 2
+
+
+@pytest.mark.tier2
+def test_tier2_sec_11_truncated_model_json_is_retried_and_never_shown_raw(
+    data_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unique_user_id: str,
+) -> None:
+    recorded_calls = _install_fake_genai_client(
+        monkeypatch,
+        data_dir=data_dir,
+        payload_factory=lambda _kw: '{"scope": "TRANSLATE", "coach_intro": "Love it", "post_text": "Thrilled to',
+    )
+    app = server_main.create_app()
+    with TestClient(app) as client:
+        resp = client.post(
+            "/api/chat",
+            json={
+                "message": "We shipped an agent prototyping integration at work today",
+                "user_id": unique_user_id,
+            },
+        )
+    assert resp.status_code == 200
+    parsed = ChatTurnResponse.model_validate(resp.json())
+    assert len(recorded_calls) == 2
+    assert not parsed.reply_text.lstrip().startswith("{")
+    assert '"scope"' not in parsed.reply_text
+    assert parsed.reply_text.strip()
