@@ -285,22 +285,21 @@
     const metaRow = document.createElement("div");
     metaRow.className = "card-meta-row";
 
-    const labelEl = document.createElement("span");
     const labelText =
-      res.label || (res.guardrail_blocked ? "Confidentiality Check" : "Assistant");
-    const isLinkedinLabel =
-      !res.guardrail_blocked &&
-      (Boolean(res.can_post_to_linkedin) ||
-        labelText.toLowerCase().includes("linkedin"));
+      res.label || (res.guardrail_blocked ? "Confidentiality Check" : "");
+    const showVisibleLabel =
+      Boolean(labelText) &&
+      (Boolean(res.guardrail_blocked) || labelText !== "LinkedIn Style");
 
-    labelEl.className = "card-label";
-    if (res.guardrail_blocked) {
-      labelEl.classList.add("is-guardrail");
-    } else if (isLinkedinLabel) {
-      labelEl.classList.add("is-linkedin");
+    if (showVisibleLabel) {
+      const labelEl = document.createElement("span");
+      labelEl.className = "card-label";
+      if (res.guardrail_blocked) {
+        labelEl.classList.add("is-guardrail");
+      }
+      labelEl.textContent = labelText;
+      metaRow.appendChild(labelEl);
     }
-    labelEl.textContent = labelText;
-    metaRow.appendChild(labelEl);
 
     if (res.preference_saved) {
       const memNote = document.createElement("span");
@@ -314,7 +313,9 @@
       metaRow.appendChild(memNote);
     }
 
-    card.appendChild(metaRow);
+    if (metaRow.childElementCount > 0) {
+      card.appendChild(metaRow);
+    }
 
     const replyText = String(res.reply_text || "");
     const bodyEl = document.createElement("p");

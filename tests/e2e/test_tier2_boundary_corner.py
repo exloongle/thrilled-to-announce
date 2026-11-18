@@ -1458,3 +1458,42 @@ def test_tier2_f12_06_ruff_check_passes_with_zero_violations_on_e2e_suite(
         check=False,
     )
     assert proc.returncode == 0, f"Ruff violations:\n{proc.stdout}\n{proc.stderr}"
+
+
+@pytest.mark.tier2
+async def test_tier2_f3_08_thematic_humor_hashtag_followup_and_no_linkedin_card_title(
+    e2e_client: httpx.AsyncClient,
+    unique_user_id: str,
+) -> None:
+    turn1 = await e2e_client.post(
+        "/api/chat",
+        json={
+            "message": "I hate myself and someone help me",
+            "user_id": unique_user_id,
+        },
+    )
+    assert turn1.status_code == 200
+    p1 = ChatTurnResponse.model_validate(turn1.json())
+    assert p1.detected_style == DetectedStyle.HUMAN_DAILY
+    low1 = p1.reply_text.lower()
+    assert any(
+        k in low1
+        for k in ("reflect", "growth", "mentor", "support", "help", "community", "network", "peer", "candid")
+    )
+
+    turn2 = await e2e_client.post(
+        "/api/chat",
+        json={
+            "message": "Let's also add some hashtags of relate topics",
+            "user_id": unique_user_id,
+            "session_id": p1.session_id,
+        },
+    )
+    assert turn2.status_code == 200
+    p2 = ChatTurnResponse.model_validate(turn2.json())
+    assert p2.detected_style == DetectedStyle.STYLE_TWEAK
+    assert p2.reply_text.strip() != p1.reply_text.strip()
+    assert len(HASHTAG_RE.findall(p2.reply_text)) >= 1
+
+    app_js = (await e2e_client.get("/static/app.js")).text
+    assert 'labelText !== "LinkedIn Style"' in app_js

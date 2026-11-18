@@ -75,16 +75,25 @@ TWEAK_NEG_VOCAB_RE = re.compile(
 
 TWEAK_EDIT_RE = re.compile(
     r"(?:"
-    r"\b(?:make|keep|rewrite|revise|edit|tweak|shorten)\s+(?:it|this|that|the\s+(?:draft|post|announcement|tone|style)|my\s+(?:posts?|drafts?|style))\b.*\b(?:shorter|longer|concise|brief|punchier|punchy|more\s+human|less\s+corporate|less\s+stiff|less\s+formal|more\s+casual|more\s+professional|warmer|upbeat|bullet\s*points?|bullets|paragraphs?|broetry|emojis?)\b"
-    r"|\bsound\s+(?:more\s+human|less\s+corporate|less\s+stiff|more\s+natural|more\s+conversational|less\s+robotic|warmer|more\s+upbeat)\b"
+    r"\b(?:make|keep|rewrite|revise|edit|tweak|shorten)\s+(?:it|this|that|the\s+(?:draft|post|announcement|tone|style)|my\s+(?:posts?|drafts?|style))\b.*\b(?:shorter|longer|concise|brief|punchier|punchy|more\s+human|less\s+corporate|less\s+stiff|less\s+formal|more\s+casual|more\s+professional|warmer|upbeat|funnier|funny|wittier|humorous|dramatic|bullet\s*points?|bullets|paragraphs?|broetry|emojis?|hashtags?|tags?)\b"
+    r"|\bsound\s+(?:more\s+human|less\s+corporate|less\s+stiff|more\s+natural|more\s+conversational|less\s+robotic|warmer|more\s+upbeat|funnier|wittier)\b"
     r"|\b(?:format\s+(?:it\s+)?(?:as|with)|switch\s+(?:back\s+)?to)\s+(?:(?:a|the|single|concise|short|upbeat)\s+)*(?:bullet\s*points?|bullets|paragraphs?(?:\s+format)?|broetry)\b"
-    r"|\b(?:allow|enable|disable|strip|remove)\s+(?:all\s+)?emojis?\b"
+    r"|\b(?:allow|enable|disable|strip|remove|add|include|append|insert|put)\s+(?:all\s+|some\s+|a\s+few\s+|more\s+|relevant\s+|related\s+|topical\s+|fitting\s+)?(?:emojis?|hashtags?|tags?)\b"
     r")",
     re.IGNORECASE,
 )
 
 TWEAK_DRAFT_SHORT_RE = re.compile(
     r"^\s*(?:please\s+)?(?:shorter|much\s+shorter|more\s+concise|make\s+it\s+\w+|tone\s+it\s+down|too\s+corporate\b.*|try\s+bullet\s*points?\b.*|use\s+bullets?\b.*|remove\s+(?:the\s+)?hashtags?\b.*|no\s+emojis?\b.*)\s*[.!]*$",
+    re.IGNORECASE,
+)
+
+TWEAK_FOLLOWUP_EDIT_RE = re.compile(
+    r"(?:"
+    r"^\s*(?:please\s+)?(?:let'?s\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|now\s+)?(?:also\s+)?(?:add|include|append|insert|put|remove|drop|delete|cut|strip|change|replace|swap|adjust|tweak|modify|update|rewrite|rephrase|revise|shorten|expand|soften|polish|spice\s+up|make\s+(?:it|this|that))\b"
+    r"|\b(?:hashtags?|tags?)\s+(?:of|for|about|on)\s+(?:related|relevant|similar|these|those|the)\b"
+    r"|\badd\s+(?:some\s+|a\s+few\s+|more\s+|relevant\s+|related\s+)?(?:hashtags?|tags?|emojis?|humor|wit|a\s+hook|a\s+cta)\b"
+    r")",
     re.IGNORECASE,
 )
 
@@ -218,7 +227,10 @@ def detect_human_or_linkedin_style(
             tweak_signals.append("negative_vocabulary_constraint")
         if TWEAK_EDIT_RE.search(text):
             tweak_signals.append("style_revision_directive")
-        if req.has_previous_draft and TWEAK_DRAFT_SHORT_RE.search(text):
+        if req.has_previous_draft and (
+            TWEAK_DRAFT_SHORT_RE.search(text)
+            or (len(text) <= 240 and TWEAK_FOLLOWUP_EDIT_RE.search(text))
+        ):
             tweak_signals.append("short_draft_adjustment")
 
         if tweak_signals:

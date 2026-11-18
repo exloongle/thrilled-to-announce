@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import os
 from pathlib import Path
 import re
 from typing import Any
@@ -236,15 +237,116 @@ def _compose_linkedin_sentences(scrubbed_text: str) -> list[str]:
             "Delighted to ship our Tokyo 東京 and Zürich API gateway migration—delivering noticeably lower latency across global regions.",
             "Grateful to the cross-regional platform engineering team that made this rollout smooth.",
         ]
+    if (
+        "hate myself" in lower
+        or "help me" in lower
+        or "imposter" in lower
+        or "overwhelmed" in lower
+        or "failing at" in lower
+    ):
+        return [
+            "Deeply humbled by an intense season of radical self-reflection and owning my toughest growth edges out loud.",
+            "Grateful to be part of a thoughtful community where raising a hand for candid mentorship and collaborative problem-solving helps everyone level up together.",
+        ]
+    if "hate my" in lower or "hate this" in lower or "sucks" in lower:
+        return [
+            "Candid moments of friction often sharpen clarity on where we create the highest long-term value.",
+            "Focused on channeling lessons from challenging chapters into intentional, high-impact work ahead.",
+        ]
     if "flaky deployment" in lower or "flaky ci" in lower:
         return [
             "Investing engineering focus into stabilizing CI and deployment automation pays off every week in calmer, more reliable releases.",
             "Strong release pipelines let teams spend energy on customer value rather than manual toil.",
         ]
+    tokens = re.findall(r"[a-zA-Z]{4,}", lower)
+    stop = {
+        "that",
+        "this",
+        "with",
+        "from",
+        "have",
+        "been",
+        "just",
+        "want",
+        "need",
+        "really",
+        "very",
+        "about",
+        "some",
+        "someone",
+        "myself",
+        "today",
+        "every",
+        "week",
+        "company",
+        "work",
+        "hate",
+    }
+    themes = list(dict.fromkeys(tok for tok in tokens if tok not in stop))[:3]
+    if themes:
+        theme_phrase = " and ".join([", ".join(themes[:-1]), themes[-1]]) if len(themes) > 1 else themes[0]
+        return [
+            f"Taking a candid moment to reflect on {theme_phrase}—and how leaning into honest feedback and collaborative problem-solving turns tough stretches into durable growth.",
+            "Always open to comparing notes with peers navigating similar inflection points.",
+        ]
     return [
-        "Grateful to share an update from our recent engineering sprint focused on reliable architecture, clean execution, and measurable team impact.",
-        "Always energizing to iterate, learn, and ship steady improvements together.",
+        "Taking a candid moment for honest reflection—and turning everyday challenges into fuel for intentional growth and stronger collaboration.",
+        "Always grateful to learn alongside thoughtful peers.",
     ]
+
+
+_TOPIC_HASHTAG_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("mentor", "help", "support", "feedback", "growth", "reflection", "learn"), "#GrowthMindset"),
+    (("mentorship", "peers", "community", "network", "team"), "#Leadership"),
+    (("engineering", "code", "architecture", "sprint", "pipeline", "ci", "api", "prod"), "#SoftwareEngineering"),
+    (("career", "job", "role", "opportunity", "sabbatical", "chapter", "hiring"), "#CareerGrowth"),
+    (("burnout", "recharge", "sleep", "balance", "async", "focus", "meetings"), "#WorkCulture"),
+    (("ai", "agent", "llm", "automation"), "#AI"),
+)
+
+
+def _suggest_topical_hashtags(
+    draft_text: str,
+    source_text: str,
+    *,
+    max_count: int = 3,
+) -> list[str]:
+    """Generate relevant career/industry hashtags from draft and source themes."""
+    combined = f"{source_text} {draft_text}".lower()
+    chosen: list[str] = []
+    for keywords, tag in _TOPIC_HASHTAG_MAP:
+        if any(re.search(rf"\b{re.escape(kw)}\b", combined) for kw in keywords) and tag not in chosen:
+            chosen.append(tag)
+        if len(chosen) >= max_count:
+            break
+    for fallback_tag in ("#CareerGrowth", "#ContinuousLearning", "#TechCommunity"):
+        if len(chosen) >= max_count:
+            break
+        if fallback_tag not in chosen:
+            chosen.append(fallback_tag)
+    return chosen[:max_count]
+
+
+def _apply_followup_tweak_to_sentences(
+    *,
+    sentences: list[str],
+    prior_draft: str,
+    source_text: str,
+    tweak_instruction: str,
+) -> tuple[list[str], list[str]]:
+    """Apply direct follow-up draft modifications (e.g., hashtags) offline."""
+    lower = tweak_instruction.lower()
+    extra_tags: list[str] = []
+    explicit_tags = _HASHTAG_RE.findall(tweak_instruction)
+    if explicit_tags:
+        extra_tags.extend(explicit_tags)
+    elif re.search(r"\b(?:add|include|append|insert|put|with|more)\b.*\b(?:hashtags?|tags?)\b|\b(?:hashtags?|tags?)\b", lower) and not re.search(r"\b(?:remove|no|without|drop|strip)\b.*\b(?:hashtags?|tags?)\b", lower):
+        extra_tags.extend(_suggest_topical_hashtags(prior_draft, source_text, max_count=3))
+
+    base_sentences = list(sentences)
+    if not base_sentences and prior_draft.strip():
+        base_sentences = [prior_draft.strip()]
+    return base_sentences, extra_tags
 
 
 def _apply_style_constraints_and_validate(
@@ -252,10 +354,13 @@ def _apply_style_constraints_and_validate(
     sentences: list[str],
     raw_source: str,
     profile: WordingPreferenceProfile,
+    extra_tags: list[str] | None = None,
+    preserve_live_formatting: bool = False,
 ) -> tuple[str, int]:
     """Apply user wording preferences and run self-healing tone validation."""
     raw_tags = _HASHTAG_RE.findall(raw_source)
-    kept_tags = raw_tags[:5]
+    candidate_tags = list(dict.fromkeys([*raw_tags, *(extra_tags or [])]))
+    kept_tags = candidate_tags[:5]
 
     cleaned_sentences: list[str] = []
     for sentence in sentences:
@@ -265,7 +370,7 @@ def _apply_style_constraints_and_validate(
             text = pat.sub("focused", text)
         if profile.avoid_emojis:
             text = _EMOJI_RE.sub("", text)
-        text = re.sub(r"\s{2,}", " ", text).strip()
+        text = re.sub(r"[ \t]{2,}", " ", text).strip()
         if text:
             cleaned_sentences.append(text)
 
@@ -274,7 +379,9 @@ def _apply_style_constraints_and_validate(
             "Looking ahead to meaningful engineering challenges and continuous growth."
         ]
 
-    if profile.preferred_format == PreferredFormat.BULLETS:
+    if preserve_live_formatting:
+        draft = "\n\n".join(cleaned_sentences)
+    elif profile.preferred_format == PreferredFormat.BULLETS:
         bullets = list(cleaned_sentences)
         if len(bullets) < 2:
             bullets.append(
@@ -292,9 +399,12 @@ def _apply_style_constraints_and_validate(
         clean_tags = [
             _EMOJI_RE.sub("", t) if profile.avoid_emojis else t for t in kept_tags
         ]
-        tag_str = " ".join(t for t in clean_tags if len(t) > 1)
-        if tag_str:
-            draft = f"{draft}\n\n{tag_str}"
+        existing_tags = _HASHTAG_RE.findall(draft)
+        if not preserve_live_formatting or not existing_tags:
+            missing_tags = [t for t in clean_tags if len(t) > 1 and t.lower() not in draft.lower()]
+            tag_str = " ".join(missing_tags[: max(0, 5 - len(existing_tags))])
+            if tag_str:
+                draft = f"{draft}\n\n{tag_str}"
 
     if len(draft) > 3000:
         draft = draft[:2990].rstrip() + "..."
@@ -333,6 +443,11 @@ def _apply_style_constraints_and_validate(
 def create_app() -> FastAPI:
     """Construct the FastAPI conversational application bound to live settings."""
     settings = get_settings()
+    if settings.google_genai_use_vertexai:
+        for key_var in ("GEMINI_API_KEY", "GOOGLE_API_KEY"):
+            val = os.getenv(key_var, "").strip().lower()
+            if val in {"", "none", "placeholder", "replace-me", "changeme"}:
+                os.environ.pop(key_var, None)
     configure_logging(
         project_id=settings.google_cloud_project,
     )
@@ -421,7 +536,8 @@ def create_app() -> FastAPI:
             return None
 
         try:
-            chunks: list[str] = []
+            preferred_final: str | None = None
+            last_final: str | None = None
             async for event in adk_runner.run_async(
                 user_id=user_id,
                 session_id=session_id,
@@ -435,15 +551,26 @@ def create_app() -> FastAPI:
                     and event.content
                     and event.content.parts
                 ):
-                    for part in event.content.parts:
-                        if part.text:
-                            chunks.append(part.text.strip())
-            combined = "\n\n".join(c for c in chunks if c)
-            return combined if combined else None
+                    text_parts = [
+                        part.text.strip()
+                        for part in event.content.parts
+                        if getattr(part, "text", None) and part.text.strip()
+                    ]
+                    if text_parts:
+                        joined = "\n\n".join(text_parts)
+                        last_final = joined
+                        if getattr(event, "author", "") in {
+                            "self_eval_auditor_agent",
+                            "coordinator_agent",
+                            "linkedin_converter_agent",
+                        }:
+                            preferred_final = joined
+            return preferred_final or last_final
         except Exception as exc:
             get_logger(__name__).warning(
                 "live_adk_runner_fallback",
                 error_type=type(exc).__name__,
+                error_message=scrubber.scrub(str(exc)).scrubbed_text[:240],
             )
             return None
 
@@ -621,6 +748,7 @@ def create_app() -> FastAPI:
                 updated_profile = WordingPreferenceProfile.model_validate(
                     saved_res["updated_profile"]
                 )
+                prior_draft = session_drafts.get(session_id, "")
                 source_text = session_sources.get(
                     session_id,
                     "I am tired of my current company and just wanted to find something not that boring",
@@ -629,23 +757,41 @@ def create_app() -> FastAPI:
                     user_id=user_id,
                     session_id=session_id,
                     prompt_text=(
-                        f"Apply this wording preference tweak: {scrubbed_msg}\n"
+                        f"Apply this modification or style preference directly to the current draft: {scrubbed_msg}\n"
+                        f"Current draft: {prior_draft or '(none yet)'}\n"
+                        f"Original human thought: {source_text}\n"
                         f"Active profile: {updated_profile.model_dump_json()}\n"
-                        f"Rewrite this source thought concisely: {source_text}"
+                        "Return ONLY the revised LinkedIn post (no commentary)."
                     ),
                 )
                 if live_reply:
+                    scrubbed_live = scrubber.scrub(live_reply).scrubbed_text
+                    _, extra_tags = _apply_followup_tweak_to_sentences(
+                        sentences=[scrubbed_live],
+                        prior_draft=prior_draft,
+                        source_text=source_text,
+                        tweak_instruction=scrubbed_msg,
+                    )
                     rewritten, risk_score = _apply_style_constraints_and_validate(
-                        sentences=[live_reply],
+                        sentences=[scrubbed_live],
                         raw_source=source_text,
                         profile=updated_profile,
+                        extra_tags=extra_tags,
+                        preserve_live_formatting=True,
                     )
                 else:
                     sentences = _compose_linkedin_sentences(source_text)
-                    rewritten, risk_score = _apply_style_constraints_and_validate(
+                    tweaked_sentences, extra_tags = _apply_followup_tweak_to_sentences(
                         sentences=sentences,
+                        prior_draft=prior_draft,
+                        source_text=source_text,
+                        tweak_instruction=scrubbed_msg,
+                    )
+                    rewritten, risk_score = _apply_style_constraints_and_validate(
+                        sentences=tweaked_sentences,
                         raw_source=source_text,
                         profile=updated_profile,
+                        extra_tags=extra_tags,
                     )
 
                 session_drafts[session_id] = rewritten
@@ -719,9 +865,12 @@ def create_app() -> FastAPI:
                 user_id=user_id,
                 session_id=session_id,
                 prompt_text=(
-                    f"Convert this plain human thought into LinkedIn style.\n"
+                    "Convert this plain human thought into witty, career-safe LinkedIn style "
+                    "while keeping an unmistakable thematic connection so both sides feel clearly "
+                    "linked and funny.\n"
                     f"Input: {scrubbed_msg}\n"
-                    f"Saved preferences: {profile.model_dump_json()}"
+                    f"Saved preferences: {profile.model_dump_json()}\n"
+                    "Return ONLY the LinkedIn post."
                 ),
             )
             if live_converted:
@@ -730,6 +879,7 @@ def create_app() -> FastAPI:
                     sentences=[scrubbed_live],
                     raw_source=scrubbed_msg,
                     profile=profile,
+                    preserve_live_formatting=True,
                 )
             else:
                 sentences = _compose_linkedin_sentences(scrubbed_msg)
