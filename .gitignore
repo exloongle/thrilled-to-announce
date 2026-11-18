@@ -1,0 +1,46 @@
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+uv.lock
+
+# Agent & IDE Metadata
+.agents/
+.adk/
+.DS_Store
+
+# Environment & Secrets (Never commit credentials)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+deployment_metadata.json
+
+# Local Databases, Coverage, Logs & Runtime State
+*.db
+*.sqlite
+*.sqlite3
+*.log
+.coverage
+coverage.xml
+htmlcov/
+.thrilled_data/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Terraform State
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfstate*
+terraform/*.tfvars
+terraform/*.tfvars.json

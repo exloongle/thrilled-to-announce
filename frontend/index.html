@@ -1,0 +1,83 @@
+<!--
+ Copyright 2026 Google LLC
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     https://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thrilled to Announce</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="top-bar">
+      <div class="top-bar-inner">
+        <div class="brand">
+          <div class="brand-badge" aria-hidden="true">ta</div>
+          <h1 class="brand-title">Thrilled to Announce</h1>
+        </div>
+        <button id="newChatBtn" type="button" class="new-chat-btn">
+          New chat
+        </button>
+      </div>
+    </header>
+
+    <main id="chatViewport" class="chat-viewport" aria-live="polite">
+      <div id="chatStream" class="chat-stream"></div>
+    </main>
+
+    <footer class="composer-bar">
+      <form id="composerForm" class="composer-pill" autocomplete="off">
+        <input
+          id="messageInput"
+          name="message"
+          type="text"
+          maxlength="6000"
+          class="composer-input"
+          placeholder="Say what you really think, paste a LinkedIn post, or tweak your style..."
+          aria-label="Message"
+        />
+        <button id="sendBtn" type="submit" class="send-btn" disabled>
+          Send
+        </button>
+      </form>
+    </footer>
+
+    <div
+      id="hitlOverlay"
+      class="hitl-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="hitlTitle"
+    >
+      <div class="hitl-modal">
+        <h2 id="hitlTitle" class="hitl-title">Post to LinkedIn?</h2>
+        <p id="hitlPreview" class="hitl-preview"></p>
+        <div class="hitl-actions">
+          <button id="hitlCancelBtn" type="button" class="hitl-cancel-btn">
+            Cancel
+          </button>
+          <button id="hitlConfirmBtn" type="button" class="hitl-confirm-btn">
+            Post
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

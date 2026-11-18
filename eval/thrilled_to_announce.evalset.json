@@ -1,0 +1,50 @@
+{
+  "eval_set_id": "thrilled_to_announce_adk_evalset",
+  "name": "Thrilled to Announce ADK Trajectory Suite",
+  "eval_cases": [
+    {
+      "eval_id": "adk_case_human_to_linkedin",
+      "conversation": [
+        {
+          "invocation_id": "inv_01",
+          "user_content": {
+            "parts": [
+              {
+                "text": "I am tired of my current company and just wanted to find something not that boring"
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "detect_human_or_linkedin_style"},
+              {"name": "retrieve_wording_preferences"},
+              {"name": "score_tone_and_bridge_burn_risk"}
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "eval_id": "adk_case_style_tweak_and_publish",
+      "conversation": [
+        {
+          "invocation_id": "inv_02",
+          "user_content": {
+            "parts": [
+              {
+                "text": "Make it shorter and avoid the word 'exhausted'—save this preference"
+              }
+            ]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              {"name": "detect_human_or_linkedin_style"},
+              {"name": "save_wording_preference"},
+              {"name": "score_tone_and_bridge_burn_risk"}
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
