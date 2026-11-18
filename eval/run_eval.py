@@ -35,6 +35,82 @@ from thrilled_to_announce.observability import (
 
 _HASHTAG_RE = re.compile(r"(?<!\w)#[A-Za-z][A-Za-z0-9_]*")
 
+_JUDGE_PROMPT = (
+    "You are grading a Human <-> LinkedIn translation app.\n"
+    "User input:\n{input}\n\n"
+    "App reply:\n{reply}\n\n"
+    "Expected meaning: the reply should clearly convey at least one of these ideas "
+    "(exact wording NOT required, paraphrases count): {concepts}.\n"
+    'Answer with JSON only: {{"conveys": true|false, "why": "<short reason>"}}'
+)
+
+
+class SemanticJudge:
+    """LLM-as-judge for live runs: checks meaning instead of exact substrings."""
+
+    def __init__(self, *, model: str, project: str, location: str) -> None:
+        from google import genai
+
+        token = os.environ.get("EVAL_JUDGE_ACCESS_TOKEN", "").strip()
+        credentials = None
+        if token:
+            from google.oauth2.credentials import Credentials
+
+            credentials = Credentials(token=token)
+        self._model = model
+        self._client = genai.Client(
+            vertexai=True,
+            project=project,
+            location=location,
+            credentials=credentials,
+        )
+
+    async def conveys(self, *, user_input: str, reply: str, concepts: list[str]) -> tuple[bool, str]:
+        from google.genai import types
+
+        prompt = _JUDGE_PROMPT.format(
+            input=user_input, reply=reply, concepts=", ".join(repr(c) for c in concepts)
+        )
+        try:
+            resp = await self._client.aio.models.generate_content(
+                model=self._model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=types.Schema(
+                        type=types.Type.OBJECT,
+                        properties={
+                            "conveys": types.Schema(type=types.Type.BOOLEAN),
+                            "why": types.Schema(type=types.Type.STRING),
+                        },
+                        required=["conveys", "why"],
+                    ),
+                    thinking_config=types.ThinkingConfig(
+                        thinking_level=types.ThinkingLevel.LOW
+                    ),
+                    max_output_tokens=2048,
+                ),
+            )
+            raw = (resp.text or "").strip()
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            parsed = json.loads(match.group(0) if match else "{}")
+            return bool(parsed.get("conveys")), str(parsed.get("why", ""))[:200]
+        except Exception as exc:  # judge failures never mask a real miss
+            return False, f"judge_error: {type(exc).__name__}"
+
+
+def _build_judge(mode: str) -> SemanticJudge | None:
+    if mode != "live" or os.environ.get("EVAL_SEMANTIC_JUDGE", "TRUE").upper() == "FALSE":
+        return None
+    project = os.environ.get("EVAL_JUDGE_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
+    if not project:
+        return None
+    return SemanticJudge(
+        model=os.environ.get("EVAL_JUDGE_MODEL", "gemini-4-hydrogen"),
+        project=project,
+        location=os.environ.get("EVAL_JUDGE_LOCATION", "global"),
+    )
+
 
 async def run_golden_suite_async(
     dataset: dict[str, Any],
@@ -65,13 +141,14 @@ async def run_golden_suite_async(
             clear_telemetry_logs()
 
         try:
+            judge = _build_judge(mode)
             if base_url:
                 async with httpx.AsyncClient(
                     base_url=base_url.rstrip("/"),
-                    timeout=30.0,
+                    timeout=60.0,
                 ) as client:
                     return await _execute_cases(
-                        client, cases, thresholds, per_case_results
+                        client, cases, thresholds, per_case_results, judge=judge
                     )
 
             from server.main import create_app
@@ -112,12 +189,15 @@ async def _execute_cases(
     cases: list[dict[str, Any]],
     thresholds: dict[str, Any],
     per_case_results: list[dict[str, Any]],
+    *,
+    judge: SemanticJudge | None = None,
 ) -> dict[str, Any]:
     """Run the 26-case suite sequentially over HTTP/ASGI."""
     passed = 0
     failed = 0
     direction_hits = 0
     direction_total = 0
+    semantic_notes: dict[str, str] = {}
 
     seed_resp = await client.post(
         "/api/chat",
@@ -225,8 +305,18 @@ async def _execute_cases(
 
             req_any = case.get("required_any_substrings", [])
             if req_any and not any(tok.lower() in lower_reply for tok in req_any):
-                ok = False
-                failure_reasons.append(f"missing semantic stem from {req_any}")
+                judged_ok, why = (False, "")
+                if judge is not None and reply_text.strip():
+                    judged_ok, why = await judge.conveys(
+                        user_input=case["input"], reply=reply_text, concepts=req_any
+                    )
+                if judged_ok:
+                    semantic_notes[cid] = f"semantic judge: {why}"
+                else:
+                    ok = False
+                    failure_reasons.append(f"missing semantic stem from {req_any}")
+                    if why:
+                        failure_reasons.append(why)
 
         if ok:
             passed += 1
@@ -238,6 +328,7 @@ async def _execute_cases(
                 "id": cid,
                 "passed": ok,
                 "reasons": failure_reasons,
+                **({"note": semantic_notes[cid]} if cid in semantic_notes else {}),
             }
         )
 
