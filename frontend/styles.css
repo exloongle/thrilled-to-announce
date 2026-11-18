@@ -262,6 +262,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.starter-chips.is-dismissing {
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
 }
 
 .starter-group {

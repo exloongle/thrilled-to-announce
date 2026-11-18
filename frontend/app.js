@@ -470,6 +470,18 @@
     }
   }
 
+  function dismissStarterChips() {
+    const chips = chatStream.querySelectorAll(".starter-chips");
+    chips.forEach((el) => {
+      el.classList.add("is-dismissing");
+      window.setTimeout(() => {
+        if (el.parentNode) {
+          el.remove();
+        }
+      }, 180);
+    });
+  }
+
   async function sendMessage(rawText) {
     const trimmed = String(rawText || "").trim();
     if (isSending || trimmed.length < 2) {
@@ -479,6 +491,7 @@
     isSending = true;
     messageInput.value = "";
     updateSendButtonState();
+    dismissStarterChips();
 
     appendUserBubble(trimmed);
     const thinkingRow = appendThinkingBubble();

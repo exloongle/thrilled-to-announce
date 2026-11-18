@@ -26,6 +26,7 @@ import uuid
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from google import genai
 from google.adk.runners import Runner
 from google.genai import types
 
@@ -50,6 +51,8 @@ from thrilled_to_announce.plugins import (
     IntentOutcomeContext,
     evaluate_input_policy,
 )
+from thrilled_to_announce.plugins.policy_plugin import default_safety_settings
+from thrilled_to_announce.prompts.constitution import TRANSLATOR_INSTRUCTION
 from thrilled_to_announce.schemas.contracts import (
     ChatTurnRequest,
     ChatTurnResponse,
@@ -523,49 +526,67 @@ def create_app() -> FastAPI:
                 error_message=scrubber.scrub(str(exc)).scrubbed_text,
             )
 
+    genai_client_holder: list[genai.Client | None] = [None]
+
+    def _get_genai_client() -> genai.Client:
+        if genai_client_holder[0] is None:
+            if settings.google_genai_use_vertexai:
+                genai_client_holder[0] = genai.Client(
+                    vertexai=True,
+                    project=settings.google_cloud_project,
+                    location=settings.google_cloud_location,
+                )
+            else:
+                api_key = get_secret_resolver().get_gemini_api_key(settings=settings)
+                genai_client_holder[0] = (
+                    genai.Client(api_key=api_key) if api_key else genai.Client()
+                )
+        return genai_client_holder[0]
+
     async def _maybe_run_live_adk(
         *,
         user_id: str,
         session_id: str,
         prompt_text: str,
     ) -> str | None:
-        """Invoke the live multi-agent ADK Runner when cloud credentials exist."""
+        """Invoke low-latency live Gemini generation instrumented with telemetry."""
         if auth_mode == "unconfigured":
             return None
         if settings.google_genai_use_vertexai and not settings.google_cloud_project:
             return None
 
+        model_name = settings.flash_model
         try:
-            preferred_final: str | None = None
-            last_final: str | None = None
-            async for event in adk_runner.run_async(
-                user_id=user_id,
+            gen_kwargs: dict[str, Any] = {
+                "system_instruction": TRANSLATOR_INSTRUCTION,
+                "safety_settings": default_safety_settings(),
+            }
+            if "gemini-4" not in model_name.lower():
+                gen_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+            else:
+                gen_kwargs["thinking_config"] = types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.LOW
+                )
+
+            with IntentOutcomeContext(
+                "live_gemini_generate",
+                operation_kind="agent",
                 session_id=session_id,
-                new_message=types.Content(
-                    role="user",
-                    parts=[types.Part(text=prompt_text)],
-                ),
-            ):
-                if (
-                    event.is_final_response()
-                    and event.content
-                    and event.content.parts
-                ):
-                    text_parts = [
-                        part.text.strip()
-                        for part in event.content.parts
-                        if getattr(part, "text", None) and part.text.strip()
-                    ]
-                    if text_parts:
-                        joined = "\n\n".join(text_parts)
-                        last_final = joined
-                        if getattr(event, "author", "") in {
-                            "self_eval_auditor_agent",
-                            "coordinator_agent",
-                            "linkedin_converter_agent",
-                        }:
-                            preferred_final = joined
-            return preferred_final or last_final
+                user_id=user_id,
+                args={"model": model_name},
+            ) as llm_ctx:
+                client = _get_genai_client()
+                response = await client.aio.models.generate_content(
+                    model=model_name,
+                    contents=prompt_text,
+                    config=types.GenerateContentConfig(**gen_kwargs),
+                )
+                text = (getattr(response, "text", None) or "").strip()
+                llm_ctx.set_outcome(
+                    status="ok" if text else "empty",
+                    result={"chars": len(text), "model": model_name},
+                )
+                return text or None
         except Exception as exc:
             get_logger(__name__).warning(
                 "live_adk_runner_fallback",
@@ -585,6 +606,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=_lifespan,
     )
+    fastapi_app.state.adk_runner = adk_runner
 
     @fastapi_app.get("/", response_class=HTMLResponse)
     async def serve_index() -> HTMLResponse:
