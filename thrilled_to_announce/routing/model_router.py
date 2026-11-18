@@ -74,7 +74,7 @@ class StrategicModelRouter:
         agent_role: str,
         tier: TaskComplexityTier,
     ) -> ModelRouteDecision:
-        """Select ``gemini-2.5-pro`` for deep analysis/audit and ``gemini-2.5-flash`` for speed."""
+        """Route every tier to the single configured model (default ``gemini-4-hydrogen``)."""
         if tier == TaskComplexityTier.DEEP_REASONING_AND_AUDIT:
             decision = ModelRouteDecision(
                 agent_role=agent_role,

@@ -1255,16 +1255,15 @@ def test_tier1_f6_04_model_routing_env_configuration_supported_cleanly(
     project_root: Path,
 ) -> None:
     env_example = (project_root / ".env.example").read_text(encoding="utf-8")
-    assert "THRILLED_PRO_MODEL=gemini-2.5-pro" in env_example
-    assert "THRILLED_FLASH_MODEL=gemini-2.5-flash" in env_example
+    assert "THRILLED_PRO_MODEL=gemini-4-hydrogen" in env_example
+    assert "THRILLED_FLASH_MODEL=gemini-4-hydrogen" in env_example
 
     routing_dir = project_root / "thrilled_to_announce" / "routing"
     assert routing_dir.is_dir()
     routing_sources = "\n".join(
         p.read_text(encoding="utf-8") for p in routing_dir.glob("*.py")
     )
-    assert "gemini-2.5-flash" in routing_sources
-    assert "gemini-2.5-pro" in routing_sources
+    assert "gemini-4-hydrogen" in routing_sources
 
 
 @pytest.mark.tier1

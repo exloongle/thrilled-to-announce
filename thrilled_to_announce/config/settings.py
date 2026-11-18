@@ -33,8 +33,8 @@ DEFAULT_APP_NAME = "thrilled_to_announce"
 DEFAULT_GCP_LOCATION = "us-central1"
 DEFAULT_SECRET_ID = "gemini-api-key"
 DEFAULT_DATA_DIR = Path(".thrilled_data")
-DEFAULT_FLASH_MODEL = "gemini-2.5-flash"
-DEFAULT_PRO_MODEL = "gemini-2.5-pro"
+DEFAULT_FLASH_MODEL = "gemini-4-hydrogen"
+DEFAULT_PRO_MODEL = "gemini-4-hydrogen"
 DEFAULT_PORT = 8080
 
 _PLACEHOLDER_PROJECT_VALUES = frozenset({

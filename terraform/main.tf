@@ -192,12 +192,12 @@ resource "google_cloud_run_v2_service" "app" {
 
       env {
         name  = "THRILLED_FLASH_MODEL"
-        value = "gemini-2.5-flash"
+        value = "gemini-4-hydrogen"
       }
 
       env {
         name  = "THRILLED_PRO_MODEL"
-        value = "gemini-2.5-pro"
+        value = "gemini-4-hydrogen"
       }
 
       env {

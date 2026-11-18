@@ -1,6 +1,6 @@
 # Thrilled to Announce (`ta`)
 
-**Thrilled to Announce** (`ta`) is an Apache-2.0 conversational AI application built with **Google Agent Development Kit (ADK)** and **Vertex AI Gemini (`gemini-2.5-pro` & `gemini-2.5-flash`)** that automatically detects and translates between candid everyday language (`HUMAN_DAILY`) and polished LinkedIn announcements (`LINKEDIN_SPEAK`), learns and persists personal wording preferences across sessions (`STYLE_TWEAK`), enforces NDA / anti-doxxing / PII guardrails, and requires code-enforced Human-in-the-Loop confirmation (`PUBLISH_REQUEST`) before publishing.
+**Thrilled to Announce** (`ta`) is an Apache-2.0 conversational AI application built with **Google Agent Development Kit (ADK)** and **Vertex AI Gemini (`gemini-4-hydrogen`)** that automatically detects and translates between candid everyday language (`HUMAN_DAILY`) and polished LinkedIn announcements (`LINKEDIN_SPEAK`), learns and persists personal wording preferences across sessions (`STYLE_TWEAK`), enforces NDA / anti-doxxing / PII guardrails, and requires code-enforced Human-in-the-Loop confirmation (`PUBLISH_REQUEST`) before publishing.
 
 ---
 
@@ -32,16 +32,16 @@ flowchart TD
     end
 
     App --> GlobalPlugins
-    GlobalPlugins --> Coord["coordinator_agent (gemini-2.5-flash)<br/>Calls detect_human_or_linkedin_style + retrieve_wording_preferences"]
+    GlobalPlugins --> Coord["coordinator_agent (gemini-4-hydrogen)<br/>Calls detect_human_or_linkedin_style + retrieve_wording_preferences"]
 
     Coord --> Seq["conversion_pipeline (SequentialAgent)"]
-    Seq --> Subtext["subtext_analyst_agent (gemini-2.5-pro)<br/>Deep Subtext, Idiom Mapping & Trope Extraction"]
+    Seq --> Subtext["subtext_analyst_agent (gemini-4-hydrogen)<br/>Deep Subtext, Idiom Mapping & Trope Extraction"]
     Subtext --> Par["conversion_and_reaction_crew (ParallelAgent)"]
 
-    Par --> Conv["linkedin_converter_agent (gemini-2.5-flash)<br/>Generates LinkedIn Style Draft OR Plain English Decoding"]
-    Par --> React["feed_reaction_simulator_agent (gemini-2.5-flash)<br/>Simulates Hiring Manager & Recruiter Feed Reaction"]
+    Par --> Conv["linkedin_converter_agent (gemini-4-hydrogen)<br/>Generates LinkedIn Style Draft OR Plain English Decoding"]
+    Par --> React["feed_reaction_simulator_agent (gemini-4-hydrogen)<br/>Simulates Hiring Manager & Recruiter Feed Reaction"]
 
-    Conv --> Audit["self_eval_auditor_agent (gemini-2.5-pro)<br/>Runs score_tone_and_bridge_burn_risk + Self-Eval Audit"]
+    Conv --> Audit["self_eval_auditor_agent (gemini-4-hydrogen)<br/>Runs score_tone_and_bridge_burn_risk + Self-Eval Audit"]
     React --> Audit
 
     Coord --> HITL["publish_to_linkedin_feed<br/>FunctionTool(require_confirmation=True)"]
@@ -78,7 +78,7 @@ thrilled-to-announce/
 │   ├── memory/                              # Persistent DatabaseSessionService / SqliteSessionService + VectorStyleMemoryStore
 │   ├── tools/                               # 5 validated ADK tools + HITL FunctionTool(require_confirmation=True)
 │   ├── prompts/                             # Structured constitution & per-agent system instructions
-│   └── routing/                             # StrategicModelRouter (gemini-2.5-flash vs gemini-2.5-pro)
+│   └── routing/                             # StrategicModelRouter (single model: gemini-4-hydrogen)
 ├── server/
 │   └── main.py                              # FastAPI server (/, /static/*, /health, /api/welcome, /api/chat, /api/publish/*, /api/telemetry)
 ├── frontend/                                # Vanilla HTML, CSS, and JS implementing all 7 conversational UI states
@@ -110,7 +110,7 @@ thrilled-to-announce/
    - `ENABLE_CLOUD_DLP=FALSE` — Set `TRUE` on Google Cloud to enable Sensitive Data Protection (`dlp_v2.DlpServiceClient`) alongside deterministic regex scrubbing.
    - `OTEL_EXPORT_TO_CLOUD=TRUE` — Exports OpenTelemetry spans via `CloudTraceSpanExporter` when a Google Cloud project is configured.
    - `THRILLED_DATA_DIR=.thrilled_data` — Persistent directory for SQLite sessions and vector style memory (`SESSION_SERVICE_URI` also supports `postgresql+asyncpg://...` and `sqlite+aiosqlite:///...`).
-   - `THRILLED_FLASH_MODEL=gemini-2.5-flash` & `THRILLED_PRO_MODEL=gemini-2.5-pro` — Strategic model routing targets.
+   - `THRILLED_FLASH_MODEL=gemini-4-hydrogen` & `THRILLED_PRO_MODEL=gemini-4-hydrogen` — Strategic model routing targets.
 
 3. **Run the conversational web application locally**:
    ```bash
@@ -248,7 +248,7 @@ gcloud run deploy thrilled-to-announce \
   --no-invoker-iam-check \
   --service-account=thrilled-agent-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com \
   --set-secrets=GEMINI_API_KEY=gemini-api-key:latest \
-  --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID,GOOGLE_CLOUD_LOCATION=us-central1,OTEL_EXPORT_TO_CLOUD=TRUE,THRILLED_DATA_DIR=/tmp/thrilled_data,THRILLED_FLASH_MODEL=gemini-2.5-flash,THRILLED_PRO_MODEL=gemini-2.5-pro \
+  --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=YOUR_PROJECT_ID,GOOGLE_CLOUD_LOCATION=global,OTEL_EXPORT_TO_CLOUD=TRUE,THRILLED_DATA_DIR=/tmp/thrilled_data,THRILLED_FLASH_MODEL=gemini-4-hydrogen,THRILLED_PRO_MODEL=gemini-4-hydrogen \
   --project=YOUR_PROJECT_ID \
   --quiet
 ```

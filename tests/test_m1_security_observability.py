@@ -135,11 +135,11 @@ MOCK_STATE_7_TEXT = (
 class _DeterministicTestLlm(BaseLlm):
     """Real ADK BaseLlm test double recording incoming LlmRequests and yielding scripted responses."""
 
-    model: str = "gemini-2.5-flash"
+    model: str = "gemini-4-hydrogen"
     _scripted_steps: list[Any] = PrivateAttr(default_factory=list)
     _captured_requests: list[LlmRequest] = PrivateAttr(default_factory=list)
 
-    def __init__(self, steps: list[Any], *, model: str = "gemini-2.5-flash") -> None:
+    def __init__(self, steps: list[Any], *, model: str = "gemini-4-hydrogen") -> None:
         super().__init__(model=model)
         self._scripted_steps = list(steps)
         self._captured_requests = []
@@ -233,8 +233,8 @@ def test_app_settings_defaults_have_no_hardcoded_project_or_secrets(
     assert settings.session_service_uri is None
     assert settings.use_vertex_memory_bank is False
     assert settings.agent_engine_id is None
-    assert settings.flash_model == DEFAULT_FLASH_MODEL == "gemini-2.5-flash"
-    assert settings.pro_model == DEFAULT_PRO_MODEL == "gemini-2.5-pro"
+    assert settings.flash_model == DEFAULT_FLASH_MODEL == "gemini-4-hydrogen"
+    assert settings.pro_model == DEFAULT_PRO_MODEL == "gemini-4-hydrogen"
     assert settings.port == 8080
     assert settings.otel_export_to_cloud is False
 
@@ -261,8 +261,8 @@ def test_app_settings_reads_live_environment_overrides(
     monkeypatch.setenv("SESSION_SERVICE_URI", "postgresql+asyncpg://localhost/ta")
     monkeypatch.setenv("THRILLED_USE_VERTEX_MEMORY_BANK", "yes")
     monkeypatch.setenv("AGENT_ENGINE_ID", "engine-123")
-    monkeypatch.setenv("THRILLED_FLASH_MODEL", "gemini-2.5-flash")
-    monkeypatch.setenv("THRILLED_PRO_MODEL", "gemini-2.5-pro")
+    monkeypatch.setenv("THRILLED_FLASH_MODEL", "gemini-4-hydrogen")
+    monkeypatch.setenv("THRILLED_PRO_MODEL", "gemini-4-hydrogen")
     monkeypatch.setenv("PORT", "9090")
 
     live = get_settings()
