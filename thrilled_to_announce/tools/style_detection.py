@@ -151,17 +151,134 @@ TROPE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 LINKEDIN_BUZZ_RE = re.compile(
-    r"(?:\bthrilled\s+to\s+(?:announce|share)\b"
-    r"|\bexcited\s+to\s+(?:announce|share)\b"
-    r"|\bdelighted\s+to\s+(?:announce|share)\b"
-    r"|\bproud\s+to\s+(?:announce|share)\b"
+    r"(?:\bthrilled\s+to\s+(?:announce|share|join|welcome)\b"
+    r"|\bexcited\s+to\s+(?:announce|share|join|welcome|leverage|drive)\b"
+    r"|\bdelighted\s+to\s+(?:announce|share|join|welcome)\b"
+    r"|\bproud\s+to\s+(?:announce|share|lead|work\s+alongside)\b"
+    r"|\bgrateful\s+to\s+(?:share|announce|work|partner|lead)\b"
+    r"|\bhonored\s+to\s+(?:share|announce|join|lead|serve|speak)\b"
+    r"|\bprivileged\s+to\s+(?:share|announce|lead|work)\b"
+    r"|\benergized\s+(?:to\s+(?:share|announce|explore)|by\s+(?:what|our|this))\b"
+    r"|\balways\s+energizing\s+to\b"
+    r"|\breflecting\s+on\s+(?:my|our|an\s+incredible|this)\b"
+    r"|\bendless\s+gratitude\b"
+    r"|\bforever\s+grateful\b"
+    r"|\bexcited\s+for\s+what(?:'s|\s+is|\s+comes)\s+next\b"
+    r"|\bunpopular\s+opinion\s*:"
+    r"|\bhot\s+take\s*:"
+    r"|\b(?:key|3|three|5|five)\s+takeaways\b"
+    r"|\blet'?s\s+connect\b"
+    r"|\blink\s+in\s+(?:the\s+)?(?:comments|bio)\b"
+    r"|\bwhat(?:'s|\s+is)\s+your\s+take\?"
     r"|\bsynergistic\s+transformation\b"
     r"|\bthought\s+leadership\b"
     r"|\bparadigm\s+shift\b"
     r"|\bgrateful\s+for\s+the\s+journey\b"
-    r"|(?:^|(?<=[\s([\{\"'\u201c\u2018]))#(?:blessed|grateful|leadership|growthmindset|innovation|opentowork)\b)",
+    r"|(?:^|(?<=[\s([\{\"'\u201c\u2018]))#(?:blessed|grateful|leadership|growthmindset|innovation|opentowork|thoughtleadership|operationalexcellence|continuousimprovement|techleadership|agilemindset)\b)",
     re.IGNORECASE,
 )
+
+EXPLICIT_TO_LINKEDIN_RE = re.compile(
+    r"(?:"
+    r"\b(?:write|draft|create|generate|compose)\s+(?:me\s+)?(?:a\s+|an\s+)?linkedin\s+(?:post|update|announcement|message|draft)\b"
+    r"|\b(?:turn|convert|translate|transform|rewrite|rephrase|spin|make)\s+(?:this|it|my\s+\w+)?\s*(?:into|to|as)\s+(?:a\s+|an\s+)?linkedin\b"
+    r")",
+    re.IGNORECASE,
+)
+
+EXPLICIT_FROM_LINKEDIN_RE = re.compile(
+    r"(?:"
+    r"\b(?:decode|de-jargon|dejargon|unspin)\s+(?:this|that|the)?\s*(?:linkedin\s+)?(?:post|message|update|text)?\b"
+    r"|\btranslate\s+(?:this\s+|it\s+)?(?:from\s+linkedin|(?:to|into)\s+plain\s+english)\b"
+    r"|\bwhat\s+does\s+this\s+(?:linkedin\s+)?(?:post|message|update)\s+(?:actually\s+|really\s+)?mean\b"
+    r"|\bin\s+plain\s+english\s*:"
+    r")",
+    re.IGNORECASE,
+)
+
+CANDID_HUMAN_VOICE_RE = re.compile(
+    r"\b(?:"
+    r"i\s+hate|hate\s+my|sick\s+of|tired\s+of\s+my|so\s+bored|bored\s+of|"
+    r"want\s+to\s+scream|losing\s+my\s+mind|burned\s+out|burnt\s+out|"
+    r"laid\s+off\s+today|got\s+laid\s+off|got\s+fired|ran\s+out\s+of\s+budget|"
+    r"my\s+boss|my\s+manager\s+(?:asked|wants|keeps)|micromanag\w*|"
+    r"incompetent|idiot|trash\s+company|ruined\s+the\s+roadmap|"
+    r"broke\s+prod|thank\s+god|no\s+idea\s+what|glued\s+two|"
+    r"way\s+more\s+money|pay\s+is\s+too\s+low|stop\s+putting\s+me|"
+    r"need\s+a\s+job\s+fast|take\s+\d+\s+months\s+off\s+and\s+sleep"
+    r")\b",
+    re.IGNORECASE,
+)
+
+CAMELCASE_HASHTAG_RE = re.compile(r"(?<!\w)#[A-Z][a-z]+(?:[A-Z][A-Za-z0-9]*)+")
+
+CORPORATE_REGISTER_GROUPS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "org_alignment_jargon",
+        re.compile(
+            r"\b(?:cross[- ]functional|stakeholder\s+alignment|executive\s+presence|"
+            r"organizational\s+(?:agility|restructuring)|strategic\s+(?:alignment|vision|initiative|pivot|pillars)|"
+            r"enterprise\s+value|value\s+creation|north\s+star)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "execution_excellence_jargon",
+        re.compile(
+            r"\b(?:operational\s+(?:excellence|velocity|leverage|resilience)|"
+            r"clean\s+execution|steady\s+improvements|continuous\s+(?:improvement|learning)|"
+            r"measurable\s+(?:team\s+)?impact|driving\s+(?:impact|momentum|velocity|innovation)|"
+            r"unlock(?:ing|ed)?\s+(?:value|velocity|growth|durable))\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "polished_tech_leadership_jargon",
+        re.compile(
+            r"\b(?:reliable\s+architecture|scalable\s+architecture|next[- ]generation\s+architecture|"
+            r"mission[- ]critical|customer[- ]obsessed|high[- ]performing\s+teams?|"
+            r"blameless\s+post[- ]?mortem|institutional\s+learning|high[- ]level\s+1:1)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "performative_gratitude_tone",
+        re.compile(
+            r"(?:\bgrateful\s+for\b[^.!?\n]{0,60}\b(?:team|mentors|leadership|opportunity|chapter|colleagues)\b"
+            r"|\bproud\s+of\s+(?:what\s+)?(?:our|this|the)\s+team\b"
+            r"|\bkudos\s+to\s+(?:the|our)\s+team\b"
+            r"|\bexcited\s+to\s+(?:continue|carry\s+this\s+momentum|push\s+the\s+envelope|embark\s+on)\b)",
+            re.IGNORECASE,
+        ),
+    ),
+)
+
+
+def _detect_corporate_register_signals(text: str) -> list[str]:
+    """Score multi-signal LinkedIn corporate register when no single cliché opener matched."""
+    if CANDID_HUMAN_VOICE_RE.search(text):
+        return []
+
+    word_count = len(re.findall(r"\w+", text))
+    if word_count < 8:
+        return []
+
+    score = 0
+    matched_groups: list[str] = []
+    for group_name, group_re in CORPORATE_REGISTER_GROUPS:
+        if group_re.search(text):
+            score += 1
+            matched_groups.append(group_name)
+
+    camel_tags = CAMELCASE_HASHTAG_RE.findall(text)
+    if len(camel_tags) >= 2:
+        score += 2
+        matched_groups.append("linkedin_camelcase_hashtags")
+    elif len(camel_tags) == 1:
+        score += 1
+        matched_groups.append("linkedin_camelcase_hashtag")
+
+    return matched_groups if score >= 2 else []
 
 
 def _is_spaced_broetry(text: str) -> bool:
@@ -244,6 +361,24 @@ def detect_human_or_linkedin_style(
                 recovery_instructions=[],
             ).model_dump()
 
+        if EXPLICIT_FROM_LINKEDIN_RE.search(text) and not EXPLICIT_TO_LINKEDIN_RE.search(text):
+            return DetectStyleResponse(
+                status="ok",
+                detected_style=DetectedStyle.LINKEDIN_SPEAK,
+                confidence=0.96,
+                detected_signals=["explicit_decode_request"],
+                recovery_instructions=[],
+            ).model_dump()
+
+        if EXPLICIT_TO_LINKEDIN_RE.search(text):
+            return DetectStyleResponse(
+                status="ok",
+                detected_style=DetectedStyle.HUMAN_DAILY,
+                confidence=0.95,
+                detected_signals=["explicit_to_linkedin_request"],
+                recovery_instructions=[],
+            ).model_dump()
+
         linkedin_signals: list[str] = []
         for trope_name, trope_re in TROPE_PATTERNS:
             if trope_re.search(text_without_urls):
@@ -254,6 +389,9 @@ def detect_human_or_linkedin_style(
 
         if _is_spaced_broetry(text) and "satirical_broetry_bait" not in linkedin_signals:
             linkedin_signals.append("satirical_broetry_bait")
+
+        if not linkedin_signals:
+            linkedin_signals.extend(_detect_corporate_register_signals(text_without_urls))
 
         if linkedin_signals:
             confidence = round(min(0.99, 0.88 + 0.05 * len(linkedin_signals)), 2)

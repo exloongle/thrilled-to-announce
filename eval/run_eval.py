@@ -284,6 +284,14 @@ async def _execute_cases(
                 ok = False
                 failure_reasons.append("hashtag count exceeded max_hashtags")
 
+            min_tags = case.get(
+                "min_hashtags",
+                2 if case.get("expected_style") == "LINKEDIN_SPEAK" else 0,
+            )
+            if min_tags and len(_HASHTAG_RE.findall(reply_text)) < min_tags:
+                ok = False
+                failure_reasons.append(f"hashtag count below min_hashtags={min_tags}")
+
             if case.get("expect_preference_saved") and not body.get("preference_saved"):
                 ok = False
                 failure_reasons.append("expected preference_saved=True")

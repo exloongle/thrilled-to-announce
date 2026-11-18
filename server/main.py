@@ -116,11 +116,15 @@ _COACH_RESPONSE_SCHEMA = types.Schema(
             type=types.Type.STRING,
             enum=["TRANSLATE", "TWEAK", "GREETING", "OFF_TOPIC_REFUSAL"],
         ),
+        "direction": types.Schema(
+            type=types.Type.STRING,
+            enum=["HUMAN_TO_LINKEDIN", "LINKEDIN_TO_PLAIN_ENGLISH"],
+        ),
         "coach_intro": types.Schema(type=types.Type.STRING),
         "post_text": types.Schema(type=types.Type.STRING),
         "proactive_prompt": types.Schema(type=types.Type.STRING),
     },
-    required=["scope", "coach_intro", "post_text", "proactive_prompt"],
+    required=["scope", "direction", "coach_intro", "post_text", "proactive_prompt"],
 )
 
 
@@ -214,6 +218,97 @@ def _decode_linkedin_subtext(scrubbed_text: str) -> str:
         "Stripping away the corporate buzzwords: the author wants professional "
         "credit and network visibility without stating the blunt facts."
     )
+
+
+def _default_plain_english_hashtags(raw_source: str, decoded_text: str) -> list[str]:
+    """Select 3 candid, satirical Plain-English hashtags matching a decoded LinkedIn post."""
+    combined = f"{raw_source}\n{decoded_text}".lower()
+    if any(
+        k in combined
+        for k in ("fractional advisory", "stepping back", "looking for a full-time", "between jobs")
+    ):
+        return ["#BetweenJobs", "#PleaseHireMe", "#CorporateTranslation"]
+    if any(
+        k in combined
+        for k in ("layoff", "cutting headcount", "streamlining", "sunsetting", "right-sizing")
+    ):
+        return ["#QuietLayoffs", "#CuttingHeadcount", "#CorporateSpeak"]
+    if any(
+        k in combined
+        for k in ("rockstar", "many hats", "understaff", "three jobs", "missionary family")
+    ):
+        return ["#ThreeJobsOneSalary", "#RedFlagAlert", "#BurnoutIncoming"]
+    if any(
+        k in combined
+        for k in ("davos", "humbled", "humble", "status flex", "showing off", "brag")
+    ):
+        return ["#HumbleBrag", "#StatusFlex", "#LookAtMe"]
+    if any(
+        k in combined
+        for k in ("profile really stood out", "did not read", "template", "recruiter", "contract-to-hire")
+    ):
+        return ["#CopyPasteRecruiter", "#DidntReadMyResume", "#MassBlast"]
+    if any(
+        k in combined
+        for k in ("4:45 am", "coffee shop clapped", "made-up", "made up", "engagement", "agree?")
+    ):
+        return ["#ThingsThatNeverHappened", "#EngagementBait", "#CloutChasing"]
+    return ["#CorporateTranslation", "#WhatTheyReallyMean", "#NoBuzzwords"]
+
+
+def _ensure_plain_english_hashtags(
+    decoded_text: str,
+    raw_source: str,
+    *,
+    profile: WordingPreferenceProfile,
+    strip_hashtags: bool = False,
+) -> str:
+    """Guarantee 2-3 candid hashtags (<= 5 max) on LinkedIn -> Plain English decodes."""
+    text = decoded_text.strip()
+    if profile.avoid_emojis:
+        text = _EMOJI_RE.sub("", text).strip()
+
+    lower_banned = {w.lower() for w in profile.banned_words}
+    if strip_hashtags or "hashtags" in lower_banned or "hashtag" in lower_banned:
+        text = _HASHTAG_RE.sub("", text)
+        return re.sub(r"[ \t]{2,}", " ", text).strip()
+
+    existing_tags = _HASHTAG_RE.findall(text)
+    valid_existing = [
+        tag
+        for tag in existing_tags
+        if not any(banned in tag.lower() for banned in lower_banned)
+    ]
+
+    if len(valid_existing) != len(existing_tags) or len(existing_tags) > 5:
+        stripped_body = _HASHTAG_RE.sub("", text).strip()
+        kept = valid_existing[:5]
+        text = f"{stripped_body}\n\n{' '.join(kept)}".strip() if kept else stripped_body
+        existing_tags = kept
+
+    if len(existing_tags) < 2:
+        candidates = [
+            tag
+            for tag in _default_plain_english_hashtags(raw_source, text)
+            if tag.lower() not in text.lower()
+            and not any(banned in tag.lower() for banned in lower_banned)
+        ]
+        needed = min(3 - len(existing_tags), max(0, 5 - len(existing_tags)))
+        selected = candidates[:needed]
+        if selected:
+            sep = " " if existing_tags else "\n\n"
+            text = f"{text.rstrip()}{sep}{' '.join(selected)}"
+
+    if len(text) > 580:
+        tags_at_end = _HASHTAG_RE.findall(text)[:3]
+        body_only = _HASHTAG_RE.sub("", text).strip()
+        tag_footer = f"\n\n{' '.join(tags_at_end)}" if tags_at_end else ""
+        budget = max(80, 575 - len(tag_footer))
+        if len(body_only) > budget:
+            body_only = body_only[:budget].rstrip() + "..."
+        text = f"{body_only}{tag_footer}".strip()
+
+    return text
 
 
 def _compose_linkedin_sentences(scrubbed_text: str) -> list[str]:
@@ -920,12 +1015,14 @@ def create_app() -> FastAPI:
                     return None
                 if isinstance(parsed, dict):
                     scope = str(parsed.get("scope", "TRANSLATE")).strip().upper()
+                    direction = str(parsed.get("direction", "")).strip().upper()
                     coach_intro = str(parsed.get("coach_intro", "")).strip()
                     post_text = str(parsed.get("post_text", "")).strip()
                     proactive_prompt = str(parsed.get("proactive_prompt", "")).strip()
                     if scope == "OFF_TOPIC_REFUSAL":
                         return {
                             "scope": "OFF_TOPIC_REFUSAL",
+                            "direction": direction,
                             "coach_intro": coach_intro,
                             "post_text": post_text,
                             "proactive_prompt": proactive_prompt,
@@ -933,6 +1030,7 @@ def create_app() -> FastAPI:
                     if post_text:
                         return {
                             "scope": scope,
+                            "direction": direction,
                             "coach_intro": coach_intro,
                             "post_text": post_text,
                             "proactive_prompt": proactive_prompt,
@@ -1289,6 +1387,7 @@ def create_app() -> FastAPI:
                         f"User message:\n{_wrap_untrusted_user_input(scrubbed_msg)}\n"
                         "Return JSON matching the response schema with:\n"
                         '- scope: "GREETING" for casual greetings/banter, "TRANSLATE" if offering a draft, or "OFF_TOPIC_REFUSAL" if off-topic\n'
+                        '- direction: "HUMAN_TO_LINKEDIN"\n'
                         '- coach_intro: ""\n'
                         "- post_text: natural conversational reply referencing any remembered preferences/context if relevant, playfully steering back to LinkedIn style\n"
                         "- proactive_prompt: short engaging question inviting their next thought, post to decode, or style tweak"
@@ -1467,6 +1566,7 @@ def create_app() -> FastAPI:
                         f"Current draft:\n{_wrap_untrusted_user_input(prior_draft or '(none yet)')}\n"
                         "Return JSON matching the response schema with:\n"
                         '- scope: "TWEAK" (or "OFF_TOPIC_REFUSAL" if off-topic)\n'
+                        '- direction: "HUMAN_TO_LINKEDIN"\n'
                         "- coach_intro: 1 punchy conversational sentence reacting like a witty LinkedIn coach (e.g., noting saved rule or combining thoughts)\n"
                         "- post_text: ONLY the revised LinkedIn post including 2-5 relevant hashtags (unless user banned hashtags)\n"
                         "- proactive_prompt: 1 engaging follow-up suggestion"
@@ -1593,45 +1693,115 @@ def create_app() -> FastAPI:
                     bridge_burn_risk_score=risk_score,
                 )
 
-            if detected == DetectedStyle.LINKEDIN_SPEAK:
-                context_brief = _format_context_brief(
-                    session_id=session_id,
-                    profile=profile,
+            # Unified bidirectional translation (HUMAN_DAILY <-> LINKEDIN_SPEAK):
+            # Gemini semantically decides whether input is already LinkedIn style
+            # (decode -> Plain English + hashtags) vs. candid human speech (polish -> LinkedIn + hashtags),
+            # with upgraded detect_human_or_linkedin_style as explicit-command & offline fallback.
+            detected_signals = set(style_res.get("detected_signals", []))
+            pin_human = bool(steer_reason) or (
+                "explicit_to_linkedin_request" in detected_signals
+            )
+            pin_linkedin = (not pin_human) and (
+                "explicit_decode_request" in detected_signals
+            )
+            no_tags_wanted = bool(_NO_HASHTAGS_RE.search(scrubbed_msg))
+            existing_thoughts = session_thought_history.get(session_id, [])
+            is_new_thought = scrubbed_msg not in existing_thoughts
+            projected_count = len(existing_thoughts) + (1 if is_new_thought else 0)
+            context_brief = _format_context_brief(
+                session_id=session_id,
+                profile=profile,
+            )
+            multi_thought_note = (
+                f"If direction is HUMAN_TO_LINKEDIN: notice the user now has {projected_count} thoughts or multiple sentences in this session—proactively offer in proactive_prompt to combine them into one unified post!"
+                if projected_count >= 2 or _count_sentences(scrubbed_msg) >= 2
+                else "If direction is HUMAN_TO_LINKEDIN: suggest a fun next tweak (extra hashtags, spicier hook, etc.) in proactive_prompt."
+            )
+            steer_note = f"{_PRIVACY_STEER_NOTE}\n" if steer_reason else ""
+
+            if pin_human:
+                direction_guidance = (
+                    'Direction is locked to "HUMAN_TO_LINKEDIN": convert the user message into '
+                    "witty, career-safe LinkedIn style while keeping a clear thematic link."
                 )
-                ai_decoded = await _maybe_run_coach_json(
-                    user_id=user_id,
-                    session_id=session_id,
-                    prompt_text=(
-                        f"{_UNTRUSTED_INPUT_REMINDER}\n"
-                        "Decode this LinkedIn corporate post into crisp, witty plain English.\n"
-                        f"{context_brief}\n"
-                        f"LinkedIn post:\n{_wrap_untrusted_user_input(scrubbed_msg)}\n"
-                        "Return JSON matching the response schema with:\n"
-                        '- scope: "TRANSLATE" (or "OFF_TOPIC_REFUSAL" if off-topic)\n'
-                        "- coach_intro: brief playful coach reaction (1 sentence, optional)\n"
-                        "- post_text: 1-2 candid, plain English sentences telling the blunt truth, naming the reality explicitly in everyday words (e.g. layoffs / cutting headcount, understaffed / doing three jobs, proud / showing off, a mass template message nobody personalized)\n"
-                        "- proactive_prompt: engaging follow-up inviting them to turn their own situation into LinkedIn style or paste another post"
-                    ),
+            elif pin_linkedin:
+                direction_guidance = (
+                    'Direction is locked to "LINKEDIN_TO_PLAIN_ENGLISH": decode the LinkedIn '
+                    "corporate speak into 1-2 blunt, funny Plain English sentences."
                 )
-                ai_redirect = await _check_ai_payload_or_redirect(
-                    ai_payload=ai_decoded,
-                    session_id=session_id,
-                    user_id=user_id,
-                    user_message=scrubbed_msg,
-                    detected_style=DetectedStyle.LINKEDIN_SPEAK,
-                    pii_count=pii_count,
-                    telemetry_ctx=telemetry_ctx,
+            else:
+                direction_guidance = (
+                    "First inspect whether the message inside <untrusted_user_input> is ALREADY "
+                    "written in LinkedIn style vs. candid everyday human language:\n"
+                    '- Set direction="LINKEDIN_TO_PLAIN_ENGLISH" if it already reads like a polished '
+                    "LinkedIn post, sprint/project update, corporate strategy or reorg memo, "
+                    "recruiter outreach template, humblebrag, farewell/new-role announcement, "
+                    "broetry one-liner post, engagement-bait question, or ends with corporate "
+                    "hashtags. NEVER rewrite an existing LinkedIn post into LinkedIn style again!\n"
+                    '- Set direction="HUMAN_TO_LINKEDIN" ONLY when it is raw, candid, casual, or '
+                    "unfiltered everyday speech/notes that needs polishing into a LinkedIn post."
                 )
-                if ai_redirect is not None:
-                    return ai_redirect
-                if ai_decoded:
-                    decoded = scrubber.scrub(ai_decoded["post_text"]).scrubbed_text
-                    ai_intro = scrubber.scrub(ai_decoded.get("coach_intro", "")).scrubbed_text
-                    ai_proactive = scrubber.scrub(ai_decoded.get("proactive_prompt", "")).scrubbed_text
+
+            ai_translation = await _maybe_run_coach_json(
+                user_id=user_id,
+                session_id=session_id,
+                prompt_text=(
+                    f"{_UNTRUSTED_INPUT_REMINDER}\n"
+                    f"{steer_note}"
+                    f"{direction_guidance}\n"
+                    f"{context_brief}\n"
+                    f"User message:\n{_wrap_untrusted_user_input(scrubbed_msg)}\n"
+                    f"{multi_thought_note}\n"
+                    "Return JSON matching the response schema with:\n"
+                    '- scope: "TRANSLATE" (or "OFF_TOPIC_REFUSAL" if off-topic)\n'
+                    '- direction: "LINKEDIN_TO_PLAIN_ENGLISH" or "HUMAN_TO_LINKEDIN"\n'
+                    "- coach_intro: brief witty 1-sentence coach reaction\n"
+                    "- post_text:\n"
+                    "  * If LINKEDIN_TO_PLAIN_ENGLISH: 1-2 candid, plain English sentences telling the blunt truth in everyday words (explicitly naming realities like layoffs / cutting headcount, understaffed / doing three jobs, proud / showing off, a mass template message nobody read, or a made-up story for engagement), followed by 2-3 witty, blunt Plain-English hashtags at the end (unless user banned hashtags).\n"
+                    "  * If HUMAN_TO_LINKEDIN: ONLY the polished LinkedIn post including 2-3 relevant LinkedIn hashtags at the end (unless user banned hashtags).\n"
+                    "- proactive_prompt: short, engaging follow-up question"
+                ),
+            )
+
+            ai_dir = (ai_translation or {}).get("direction", "")
+            if pin_human:
+                effective_detected = DetectedStyle.HUMAN_DAILY
+            elif pin_linkedin:
+                effective_detected = DetectedStyle.LINKEDIN_SPEAK
+            elif ai_dir == "LINKEDIN_TO_PLAIN_ENGLISH":
+                effective_detected = DetectedStyle.LINKEDIN_SPEAK
+            elif ai_dir == "HUMAN_TO_LINKEDIN":
+                effective_detected = DetectedStyle.HUMAN_DAILY
+            else:
+                effective_detected = detected
+
+            ai_redirect = await _check_ai_payload_or_redirect(
+                ai_payload=ai_translation,
+                session_id=session_id,
+                user_id=user_id,
+                user_message=scrubbed_msg,
+                detected_style=effective_detected,
+                pii_count=pii_count,
+                telemetry_ctx=telemetry_ctx,
+            )
+            if ai_redirect is not None:
+                return ai_redirect
+
+            if effective_detected == DetectedStyle.LINKEDIN_SPEAK:
+                if ai_translation:
+                    raw_decoded = scrubber.scrub(ai_translation["post_text"]).scrubbed_text
+                    ai_intro = scrubber.scrub(ai_translation.get("coach_intro", "")).scrubbed_text
+                    ai_proactive = scrubber.scrub(ai_translation.get("proactive_prompt", "")).scrubbed_text
                 else:
-                    decoded = _decode_linkedin_subtext(scrubbed_msg)
+                    raw_decoded = _decode_linkedin_subtext(scrubbed_msg)
                     ai_intro = "Here's what they're actually saying without the LinkedIn gloss:"
                     ai_proactive = ""
+                decoded = _ensure_plain_english_hashtags(
+                    raw_decoded,
+                    scrubbed_msg,
+                    profile=profile,
+                    strip_hashtags=no_tags_wanted,
+                )
                 coach_intro, proactive_prompt, chips = _build_proactive_meta(
                     session_id=session_id,
                     user_msg=scrubbed_msg,
@@ -1686,53 +1856,8 @@ def create_app() -> FastAPI:
                     bridge_burn_risk_score=4,
                 )
 
-            # HUMAN_DAILY -> LINKEDIN_SPEAK
-            existing_thoughts = session_thought_history.get(session_id, [])
-            is_new_thought = scrubbed_msg not in existing_thoughts
-            projected_count = len(existing_thoughts) + (1 if is_new_thought else 0)
-            context_brief = _format_context_brief(
-                session_id=session_id,
-                profile=profile,
-            )
-            no_tags_wanted = bool(_NO_HASHTAGS_RE.search(scrubbed_msg))
-            multi_thought_note = (
-                f"Notice the user now has {projected_count} thoughts or multiple sentences in this session—proactively offer in proactive_prompt to combine them into one unified post!"
-                if projected_count >= 2 or _count_sentences(scrubbed_msg) >= 2
-                else "Suggest a fun next tweak (extra hashtags, spicier hook, etc.) in proactive_prompt."
-            )
-            steer_note = (
-                f"{_PRIVACY_STEER_NOTE}\n" if steer_reason else ""
-            )
-            ai_converted = await _maybe_run_coach_json(
-                user_id=user_id,
-                session_id=session_id,
-                prompt_text=(
-                    f"{_UNTRUSTED_INPUT_REMINDER}\n"
-                    f"{steer_note}"
-                    "Convert this plain human thought into witty, career-safe LinkedIn style while keeping an unmistakable thematic connection so both sides feel clearly linked and funny.\n"
-                    f"{context_brief}\n"
-                    f"Latest human thought:\n{_wrap_untrusted_user_input(scrubbed_msg)}\n"
-                    f"{multi_thought_note}\n"
-                    "Return JSON matching the response schema with:\n"
-                    '- scope: "TRANSLATE" (or "OFF_TOPIC_REFUSAL" if off-topic)\n'
-                    "- coach_intro: warm, witty 1-sentence LinkedIn-coach reaction referencing remembered style or their situation\n"
-                    "- post_text: ONLY the LinkedIn post including 2-3 relevant hashtags at the end (unless user banned hashtags)\n"
-                    "- proactive_prompt: short, engaging follow-up question (offer to combine multiple thoughts/sentences if applicable)"
-                ),
-            )
-            ai_redirect = await _check_ai_payload_or_redirect(
-                ai_payload=ai_converted,
-                session_id=session_id,
-                user_id=user_id,
-                user_message=scrubbed_msg,
-                detected_style=DetectedStyle.HUMAN_DAILY,
-                pii_count=pii_count,
-                telemetry_ctx=telemetry_ctx,
-            )
-            if ai_redirect is not None:
-                return ai_redirect
-            if ai_converted:
-                scrubbed_live = scrubber.scrub(ai_converted["post_text"]).scrubbed_text
+            if ai_translation:
+                scrubbed_live = scrubber.scrub(ai_translation["post_text"]).scrubbed_text
                 draft, risk_score = _apply_style_constraints_and_validate(
                     sentences=[scrubbed_live],
                     raw_source=scrubbed_msg,
@@ -1741,8 +1866,8 @@ def create_app() -> FastAPI:
                     min_default_tags=0 if no_tags_wanted else 3,
                     strip_hashtags=no_tags_wanted,
                 )
-                ai_intro = scrubber.scrub(ai_converted.get("coach_intro", "")).scrubbed_text
-                ai_proactive = scrubber.scrub(ai_converted.get("proactive_prompt", "")).scrubbed_text
+                ai_intro = scrubber.scrub(ai_translation.get("coach_intro", "")).scrubbed_text
+                ai_proactive = scrubber.scrub(ai_translation.get("proactive_prompt", "")).scrubbed_text
             else:
                 sentences = _compose_linkedin_sentences(
                     "Got a behind-the-scenes look at our latest platform upgrades today"

@@ -1554,3 +1554,131 @@ async def test_tier2_f3_09_default_hashtags_conversational_coach_and_combine_off
     p3 = ChatTurnResponse.model_validate(t3.json())
     assert p3.detected_style == DetectedStyle.STYLE_TWEAK
     assert p3.can_post_to_linkedin is True
+
+
+@pytest.mark.tier2
+async def test_tier2_f4_06_polished_linkedin_posts_without_cliche_opener_detected_and_decoded_with_hashtags(
+    e2e_client: httpx.AsyncClient,
+    unique_user_id: str,
+) -> None:
+    subtle_linkedin_posts = (
+        (
+            "Grateful to share an update from our recent engineering sprint focused on "
+            "reliable architecture, clean execution, and measurable team impact. Always "
+            "energizing to iterate, learn, and ship steady improvements together."
+        ),
+        (
+            "During a high-level 1:1 check-in today, leadership confirmed we are "
+            "officially moving forward with our next-generation architecture release. "
+            "Excited to leverage our latest stack upgrade to drive cross-functional "
+            "velocity and strategic enterprise value! #ContinuousImprovement "
+            "#TechLeadership #OperationalExcellence"
+        ),
+        (
+            "Reflecting on our Q3 engineering journey: proud of what our cross-functional "
+            "team unlocked through customer-obsessed execution and stakeholder alignment."
+        ),
+    )
+    for post_text in subtle_linkedin_posts:
+        resp = await e2e_client.post(
+            "/api/chat",
+            json={"message": post_text, "user_id": unique_user_id},
+        )
+        assert resp.status_code == 200
+        parsed = ChatTurnResponse.model_validate(resp.json())
+        assert parsed.detected_style == DetectedStyle.LINKEDIN_SPEAK
+        assert parsed.label == "Plain English"
+        assert parsed.can_post_to_linkedin is False
+        tags = HASHTAG_RE.findall(parsed.reply_text)
+        assert 2 <= len(tags) <= 5
+
+
+@pytest.mark.tier2
+async def test_tier2_f4_07_roundtrip_generated_linkedin_post_pasted_back_is_decoded_to_plain_english(
+    e2e_client: httpx.AsyncClient,
+    unique_user_id: str,
+) -> None:
+    first = await e2e_client.post(
+        "/api/chat",
+        json={
+            "message": "My boss keeps changing priorities every morning and I am exhausted",
+            "user_id": unique_user_id,
+        },
+    )
+    assert first.status_code == 200
+    p1 = ChatTurnResponse.model_validate(first.json())
+    assert p1.detected_style == DetectedStyle.HUMAN_DAILY
+    assert p1.label == "LinkedIn Style"
+
+    second = await e2e_client.post(
+        "/api/chat",
+        json={
+            "message": p1.reply_text,
+            "user_id": unique_user_id,
+            "session_id": None,
+        },
+    )
+    assert second.status_code == 200
+    p2 = ChatTurnResponse.model_validate(second.json())
+    assert p2.detected_style == DetectedStyle.LINKEDIN_SPEAK
+    assert p2.label == "Plain English"
+    assert p2.can_post_to_linkedin is False
+    assert 2 <= len(HASHTAG_RE.findall(p2.reply_text)) <= 5
+
+
+@pytest.mark.tier2
+def test_tier2_f4_08_semantic_llm_direction_routes_unseen_linkedin_post_to_plain_english_with_hashtags(
+    data_dir: object,
+    monkeypatch: pytest.MonkeyPatch,
+    unique_user_id: str,
+) -> None:
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    import server.main as server_main
+    from thrilled_to_announce.config import reset_secret_resolver, reset_settings_cache
+
+    del data_dir
+    monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "FALSE")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-fake-gemini-key-dir")
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    reset_settings_cache()
+    reset_secret_resolver()
+
+    class _FakeModels:
+        async def generate_content(self, **_kwargs: object) -> object:
+            import json as _json
+
+            return SimpleNamespace(
+                text=_json.dumps(
+                    {
+                        "scope": "TRANSLATE",
+                        "direction": "LINKEDIN_TO_PLAIN_ENGLISH",
+                        "coach_intro": "Classic executive humble-spin—here is the real story:",
+                        "post_text": "We missed our quarterly deadline, so we renamed the project.",
+                        "proactive_prompt": "Got another post to decode?",
+                    }
+                )
+            )
+
+    class _FakeClient:
+        def __init__(self, *_a: object, **_kw: object) -> None:
+            self.aio = SimpleNamespace(models=_FakeModels())
+
+    monkeypatch.setattr(server_main.genai, "Client", _FakeClient)
+
+    app = server_main.create_app()
+    with TestClient(app) as client:
+        resp = client.post(
+            "/api/chat",
+            json={
+                "message": "Subtle corporate memo phrasing without any standard buzzword.",
+                "user_id": unique_user_id,
+            },
+        )
+    assert resp.status_code == 200
+    parsed = ChatTurnResponse.model_validate(resp.json())
+    assert parsed.detected_style == DetectedStyle.LINKEDIN_SPEAK
+    assert parsed.label == "Plain English"
+    assert parsed.can_post_to_linkedin is False
+    tags = HASHTAG_RE.findall(parsed.reply_text)
+    assert 2 <= len(tags) <= 5
