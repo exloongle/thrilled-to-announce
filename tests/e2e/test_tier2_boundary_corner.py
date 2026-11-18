@@ -90,12 +90,12 @@ async def test_tier2_f1_02_static_path_traversal_attempt_rejected_safely(
 
 
 @pytest.mark.tier2
-async def test_tier2_f1_03_wrong_http_methods_on_welcome_and_healthz_return_405(
+async def test_tier2_f1_03_wrong_http_methods_on_welcome_and_health_return_405(
     e2e_client: httpx.AsyncClient,
 ) -> None:
     assert (await e2e_client.post("/api/welcome")).status_code == 405
     assert (await e2e_client.delete("/api/welcome")).status_code == 405
-    assert (await e2e_client.post("/healthz")).status_code == 405
+    assert (await e2e_client.post("/health")).status_code == 405
 
 
 @pytest.mark.tier2
@@ -1281,7 +1281,7 @@ async def test_tier2_f11_05_offline_execution_succeeds_without_gcp_project_or_ge
     e2e_client: httpx.AsyncClient,
     unique_user_id: str,
 ) -> None:
-    assert (await e2e_client.get("/healthz")).status_code == 200
+    assert (await e2e_client.get("/health")).status_code == 200
     welcome_resp = await e2e_client.get("/api/welcome")
     assert welcome_resp.status_code == 200
     WelcomeResponse.model_validate(welcome_resp.json())

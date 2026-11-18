@@ -371,7 +371,7 @@ def test_terraform_hcl_balanced_and_resources_complete() -> None:
     assert "deletion_protection  = false" in main_tf
     assert "min_instance_count = 0" in main_tf
     assert "max_instance_count = 5" in main_tf
-    assert 'path = "/healthz"' in main_tf
+    assert 'path = "/health"' in main_tf
     assert "secret_key_ref {" in main_tf
 
     probe_timeouts = [int(m) for m in re.findall(r"timeout_seconds\s*=\s*(\d+)", main_tf)]

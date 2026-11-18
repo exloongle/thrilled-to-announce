@@ -80,7 +80,7 @@ thrilled-to-announce/
 │   ├── prompts/                             # Structured constitution & per-agent system instructions
 │   └── routing/                             # StrategicModelRouter (gemini-2.5-flash vs gemini-2.5-pro)
 ├── server/
-│   └── main.py                              # FastAPI server (/, /static/*, /healthz, /api/welcome, /api/chat, /api/publish/*, /api/telemetry)
+│   └── main.py                              # FastAPI server (/, /static/*, /health, /api/welcome, /api/chat, /api/publish/*, /api/telemetry)
 ├── frontend/                                # Vanilla HTML, CSS, and JS implementing all 7 conversational UI states
 ├── eval/                                    # 26-case golden_dataset.json, run_eval.py, ADK *.evalset.json & test_config.json
 ├── terraform/                               # Cloud Run v2, Vertex AI, DLP, Cloud Trace, Secret Manager & least-privilege IAM
@@ -118,7 +118,7 @@ thrilled-to-announce/
    ```
    Open `http://localhost:8080` in your browser. Exposed endpoints:
    - `GET /` & `GET /static/*` — Single-column `ta` conversational UI
-   - `GET /healthz` — Container startup and liveness probe (`{"status": "ok"}`)
+   - `GET /health` — Container startup and liveness probe (`{"status": "ok"}`)
    - `GET /api/welcome` — Concise launch greeting and 2 starter prompts
    - `POST /api/chat` — Automatic style detection, conversion, async preference persistence, and policy guardrails
    - `POST /api/publish/request` & `POST /api/publish/confirm` — Code-enforced HITL publishing state machine
@@ -201,7 +201,7 @@ The evaluation suite covers all **26** benchmark cases (`eval-A01`..`eval-A08` `
 
 ### Option A — Governed Terraform Infrastructure as Code (`terraform/`)
 
-`terraform/` provisions all 7 required Google Cloud APIs (`aiplatform`, `artifactregistry`, `cloudbuild`, `cloudtrace`, `dlp`, `run`, `secretmanager`), Artifact Registry (`thrilled-repo`), least-privilege runtime service account (`thrilled-agent-sa`), Secret Manager secret (`gemini-api-key` + initial Vertex-ADC sentinel version with `ignore_changes = [secret_data]`) + secret-scoped IAM, and Cloud Run v2 (`invoker_iam_disabled`, `/healthz` startup and liveness probes, scaling `0..5`, and Secret Manager `secret_key_ref`):
+`terraform/` provisions all 7 required Google Cloud APIs (`aiplatform`, `artifactregistry`, `cloudbuild`, `cloudtrace`, `dlp`, `run`, `secretmanager`), Artifact Registry (`thrilled-repo`), least-privilege runtime service account (`thrilled-agent-sa`), Secret Manager secret (`gemini-api-key` + initial Vertex-ADC sentinel version with `ignore_changes = [secret_data]`) + secret-scoped IAM, and Cloud Run v2 (`invoker_iam_disabled`, `/health` startup and liveness probes, scaling `0..5`, and Secret Manager `secret_key_ref`):
 
 ```bash
 # 1. Initialize Terraform and bootstrap Artifact Registry (plus required APIs)

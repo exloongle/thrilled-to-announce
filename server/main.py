@@ -463,6 +463,7 @@ def create_app() -> FastAPI:
             status_code=200,
         )
 
+    @fastapi_app.get("/health")
     @fastapi_app.get("/healthz")
     async def healthz() -> dict[str, str]:
         """Health check endpoint for Cloud Run startup/liveness probes."""

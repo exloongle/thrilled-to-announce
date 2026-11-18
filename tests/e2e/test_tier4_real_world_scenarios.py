@@ -627,7 +627,7 @@ async def test_tier4_08_release_engineer_pre_launch_gate_ui_eval_iac_and_ospo_hy
     eval_runner: Callable[..., subprocess.CompletedProcess[str]],
 ) -> None:
     """Journey 8: Release engineer pre-deployment verification across UI, 26-case evals, IaC, and OSPO hygiene."""
-    assert (await e2e_client.get("/healthz")).status_code == 200
+    assert (await e2e_client.get("/health")).status_code == 200
     html = (await e2e_client.get("/")).text
     css = (await e2e_client.get("/static/styles.css")).text
     js = (await e2e_client.get("/static/app.js")).text

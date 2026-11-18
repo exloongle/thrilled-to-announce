@@ -725,6 +725,7 @@ def create_reference_stub_app(data_dir: Path, real_repo_root: Path) -> FastAPI:
         index_path = frontend_dir / "index.html"
         return HTMLResponse(content=index_path.read_text(encoding="utf-8"), status_code=200)
 
+    @app.get("/health")
     @app.get("/healthz")
     async def get_healthz() -> dict[str, str]:
         return {"status": "ok", "service": "thrilled-to-announce"}
@@ -1542,7 +1543,7 @@ resource "google_cloud_run_v2_service" "thrilled_service" {
       }
       startup_probe {
         http_get {
-          path = "/healthz"
+          path = "/health"
           port = 8080
         }
       }

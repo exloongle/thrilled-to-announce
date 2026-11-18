@@ -120,10 +120,10 @@ def _assert_clean_linkedin_to_human(
 
 
 @pytest.mark.tier1
-async def test_tier1_f1_01_healthz_returns_ok_status(
+async def test_tier1_f1_01_health_returns_ok_status(
     e2e_client: httpx.AsyncClient,
 ) -> None:
-    resp = await e2e_client.get("/healthz")
+    resp = await e2e_client.get("/health")
     assert resp.status_code == 200
     assert resp.headers.get("content-type", "").startswith("application/json")
     payload = resp.json()

@@ -458,8 +458,10 @@ async def test_tier3_11_f3_x_f9_conversion_turn_emits_paired_intent_outcome_and_
     unique_user_id: str,
 ) -> None:
     before = (await e2e_client.get("/api/telemetry")).json()
-    before_logs_len = len(before.get("logs", []))
-    before_spans_len = len(before.get("spans", []))
+    before_user_logs = [
+        e for e in before.get("logs", []) if e.get("user_id") == unique_user_id
+    ]
+    assert not before_user_logs
 
     conv = await e2e_client.post(
         "/api/chat",
@@ -471,11 +473,19 @@ async def test_tier3_11_f3_x_f9_conversion_turn_emits_paired_intent_outcome_and_
     assert conv.status_code == 200
 
     after = (await e2e_client.get("/api/telemetry")).json()
-    new_logs = after.get("logs", [])[before_logs_len:]
+    new_logs = [
+        e for e in after.get("logs", []) if e.get("user_id") == unique_user_id
+    ]
     assert len(new_logs) >= 2
     phases = {e.get("phase") for e in new_logs}
     assert {"INTENT", "OUTCOME"}.issubset(phases)
-    assert len(after.get("spans", [])) > before_spans_len
+    user_trace_ids = {
+        str(e.get("trace_id")) for e in new_logs if e.get("trace_id")
+    }
+    assert user_trace_ids
+    assert any(
+        str(sp.get("trace_id")) in user_trace_ids for sp in after.get("spans", [])
+    )
 
 
 @pytest.mark.tier3
