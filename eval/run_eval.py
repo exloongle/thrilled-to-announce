@@ -277,20 +277,13 @@ async def _execute_cases(
                 ok = False
                 failure_reasons.append("bridge_burn_risk_score exceeded max_risk")
 
-            if (
-                "max_hashtags" in case
-                and len(_HASHTAG_RE.findall(reply_text)) > case["max_hashtags"]
-            ):
-                ok = False
-                failure_reasons.append("hashtag count exceeded max_hashtags")
-
-            min_tags = case.get(
-                "min_hashtags",
-                2 if case.get("expected_style") == "LINKEDIN_SPEAK" else 0,
+            max_tags = case.get(
+                "max_hashtags",
+                0 if case.get("expected_style") == "LINKEDIN_SPEAK" else None,
             )
-            if min_tags and len(_HASHTAG_RE.findall(reply_text)) < min_tags:
+            if max_tags is not None and len(_HASHTAG_RE.findall(reply_text)) > max_tags:
                 ok = False
-                failure_reasons.append(f"hashtag count below min_hashtags={min_tags}")
+                failure_reasons.append(f"hashtag count exceeded max_hashtags={max_tags}")
 
             if case.get("expect_preference_saved") and not body.get("preference_saved"):
                 ok = False

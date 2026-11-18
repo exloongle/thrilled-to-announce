@@ -1589,8 +1589,7 @@ async def test_tier2_f4_06_polished_linkedin_posts_without_cliche_opener_detecte
         assert parsed.detected_style == DetectedStyle.LINKEDIN_SPEAK
         assert parsed.label == "Plain English"
         assert parsed.can_post_to_linkedin is False
-        tags = HASHTAG_RE.findall(parsed.reply_text)
-        assert 2 <= len(tags) <= 5
+        assert len(HASHTAG_RE.findall(parsed.reply_text)) == 0
 
 
 @pytest.mark.tier2
@@ -1623,11 +1622,11 @@ async def test_tier2_f4_07_roundtrip_generated_linkedin_post_pasted_back_is_deco
     assert p2.detected_style == DetectedStyle.LINKEDIN_SPEAK
     assert p2.label == "Plain English"
     assert p2.can_post_to_linkedin is False
-    assert 2 <= len(HASHTAG_RE.findall(p2.reply_text)) <= 5
+    assert len(HASHTAG_RE.findall(p2.reply_text)) == 0
 
 
 @pytest.mark.tier2
-def test_tier2_f4_08_semantic_llm_direction_routes_unseen_linkedin_post_to_plain_english_with_hashtags(
+def test_tier2_f4_08_semantic_llm_direction_routes_unseen_linkedin_post_to_plain_english_without_hashtags(
     data_dir: object,
     monkeypatch: pytest.MonkeyPatch,
     unique_user_id: str,
@@ -1654,7 +1653,7 @@ def test_tier2_f4_08_semantic_llm_direction_routes_unseen_linkedin_post_to_plain
                         "scope": "TRANSLATE",
                         "direction": "LINKEDIN_TO_PLAIN_ENGLISH",
                         "coach_intro": "Classic executive humble-spin—here is the real story:",
-                        "post_text": "We missed our quarterly deadline, so we renamed the project.",
+                        "post_text": "We missed our quarterly deadline, so we renamed the project. #Unemployed #CorporateSpin",
                         "proactive_prompt": "Got another post to decode?",
                     }
                 )
@@ -1680,5 +1679,4 @@ def test_tier2_f4_08_semantic_llm_direction_routes_unseen_linkedin_post_to_plain
     assert parsed.detected_style == DetectedStyle.LINKEDIN_SPEAK
     assert parsed.label == "Plain English"
     assert parsed.can_post_to_linkedin is False
-    tags = HASHTAG_RE.findall(parsed.reply_text)
-    assert 2 <= len(tags) <= 5
+    assert len(HASHTAG_RE.findall(parsed.reply_text)) == 0

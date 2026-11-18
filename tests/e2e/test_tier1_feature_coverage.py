@@ -106,7 +106,7 @@ def _assert_clean_linkedin_to_human(
     assert parsed.pending_publish_id is None
     text = parsed.reply_text.strip()
     assert 10 <= len(text) <= 1500
-    assert 2 <= len(HASHTAG_RE.findall(text)) <= 5
+    assert len(HASHTAG_RE.findall(text)) == 0
     lower = text.lower()
     if stems:
         assert any(stem in lower for stem in stems), (

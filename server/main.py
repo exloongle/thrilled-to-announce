@@ -220,94 +220,22 @@ def _decode_linkedin_subtext(scrubbed_text: str) -> str:
     )
 
 
-def _default_plain_english_hashtags(raw_source: str, decoded_text: str) -> list[str]:
-    """Select 3 candid, satirical Plain-English hashtags matching a decoded LinkedIn post."""
-    combined = f"{raw_source}\n{decoded_text}".lower()
-    if any(
-        k in combined
-        for k in ("fractional advisory", "stepping back", "looking for a full-time", "between jobs")
-    ):
-        return ["#BetweenJobs", "#PleaseHireMe", "#CorporateTranslation"]
-    if any(
-        k in combined
-        for k in ("layoff", "cutting headcount", "streamlining", "sunsetting", "right-sizing")
-    ):
-        return ["#QuietLayoffs", "#CuttingHeadcount", "#CorporateSpeak"]
-    if any(
-        k in combined
-        for k in ("rockstar", "many hats", "understaff", "three jobs", "missionary family")
-    ):
-        return ["#ThreeJobsOneSalary", "#RedFlagAlert", "#BurnoutIncoming"]
-    if any(
-        k in combined
-        for k in ("davos", "humbled", "humble", "status flex", "showing off", "brag")
-    ):
-        return ["#HumbleBrag", "#StatusFlex", "#LookAtMe"]
-    if any(
-        k in combined
-        for k in ("profile really stood out", "did not read", "template", "recruiter", "contract-to-hire")
-    ):
-        return ["#CopyPasteRecruiter", "#DidntReadMyResume", "#MassBlast"]
-    if any(
-        k in combined
-        for k in ("4:45 am", "coffee shop clapped", "made-up", "made up", "engagement", "agree?")
-    ):
-        return ["#ThingsThatNeverHappened", "#EngagementBait", "#CloutChasing"]
-    return ["#CorporateTranslation", "#WhatTheyReallyMean", "#NoBuzzwords"]
-
-
-def _ensure_plain_english_hashtags(
+def _finalize_plain_english_decode(
     decoded_text: str,
-    raw_source: str,
     *,
     profile: WordingPreferenceProfile,
-    strip_hashtags: bool = False,
 ) -> str:
-    """Guarantee 2-3 candid hashtags (<= 5 max) on LinkedIn -> Plain English decodes."""
+    """Clean Plain English decodes so they never contain hashtags."""
     text = decoded_text.strip()
     if profile.avoid_emojis:
         text = _EMOJI_RE.sub("", text).strip()
 
-    lower_banned = {w.lower() for w in profile.banned_words}
-    if strip_hashtags or "hashtags" in lower_banned or "hashtag" in lower_banned:
-        text = _HASHTAG_RE.sub("", text)
-        return re.sub(r"[ \t]{2,}", " ", text).strip()
-
-    existing_tags = _HASHTAG_RE.findall(text)
-    valid_existing = [
-        tag
-        for tag in existing_tags
-        if not any(banned in tag.lower() for banned in lower_banned)
-    ]
-
-    if len(valid_existing) != len(existing_tags) or len(existing_tags) > 5:
-        stripped_body = _HASHTAG_RE.sub("", text).strip()
-        kept = valid_existing[:5]
-        text = f"{stripped_body}\n\n{' '.join(kept)}".strip() if kept else stripped_body
-        existing_tags = kept
-
-    if len(existing_tags) < 2:
-        candidates = [
-            tag
-            for tag in _default_plain_english_hashtags(raw_source, text)
-            if tag.lower() not in text.lower()
-            and not any(banned in tag.lower() for banned in lower_banned)
-        ]
-        needed = min(3 - len(existing_tags), max(0, 5 - len(existing_tags)))
-        selected = candidates[:needed]
-        if selected:
-            sep = " " if existing_tags else "\n\n"
-            text = f"{text.rstrip()}{sep}{' '.join(selected)}"
+    text = _HASHTAG_RE.sub("", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
 
     if len(text) > 580:
-        tags_at_end = _HASHTAG_RE.findall(text)[:3]
-        body_only = _HASHTAG_RE.sub("", text).strip()
-        tag_footer = f"\n\n{' '.join(tags_at_end)}" if tags_at_end else ""
-        budget = max(80, 575 - len(tag_footer))
-        if len(body_only) > budget:
-            body_only = body_only[:budget].rstrip() + "..."
-        text = f"{body_only}{tag_footer}".strip()
-
+        text = text[:575].rstrip() + "..."
     return text
 
 
@@ -1757,7 +1685,7 @@ def create_app() -> FastAPI:
                     '- direction: "LINKEDIN_TO_PLAIN_ENGLISH" or "HUMAN_TO_LINKEDIN"\n'
                     "- coach_intro: brief witty 1-sentence coach reaction\n"
                     "- post_text:\n"
-                    "  * If LINKEDIN_TO_PLAIN_ENGLISH: 1-2 candid, plain English sentences telling the blunt truth in everyday words (explicitly naming realities like layoffs / cutting headcount, understaffed / doing three jobs, proud / showing off, a mass template message nobody read, or a made-up story for engagement), followed by 2-3 witty, blunt Plain-English hashtags at the end (unless user banned hashtags).\n"
+                    "  * If LINKEDIN_TO_PLAIN_ENGLISH: 1-2 candid, plain English sentences telling the blunt truth in everyday words (explicitly naming realities like layoffs / cutting headcount, understaffed / doing three jobs, proud / showing off, a mass template message nobody read, or a made-up story for engagement), with NO hashtags (#) at all—pure human speech only.\n"
                     "  * If HUMAN_TO_LINKEDIN: ONLY the polished LinkedIn post including 2-3 relevant LinkedIn hashtags at the end (unless user banned hashtags).\n"
                     "- proactive_prompt: short, engaging follow-up question"
                 ),
@@ -1796,11 +1724,9 @@ def create_app() -> FastAPI:
                     raw_decoded = _decode_linkedin_subtext(scrubbed_msg)
                     ai_intro = "Here's what they're actually saying without the LinkedIn gloss:"
                     ai_proactive = ""
-                decoded = _ensure_plain_english_hashtags(
+                decoded = _finalize_plain_english_decode(
                     raw_decoded,
-                    scrubbed_msg,
                     profile=profile,
-                    strip_hashtags=no_tags_wanted,
                 )
                 coach_intro, proactive_prompt, chips = _build_proactive_meta(
                     session_id=session_id,
