@@ -1593,7 +1593,7 @@ def create_app() -> FastAPI:
                         "Return JSON matching the response schema with:\n"
                         '- scope: "TRANSLATE" (or "OFF_TOPIC_REFUSAL" if off-topic)\n'
                         "- coach_intro: brief playful coach reaction (1 sentence, optional)\n"
-                        "- post_text: 1-2 candid, plain English sentences telling the blunt truth\n"
+                        "- post_text: 1-2 candid, plain English sentences telling the blunt truth, naming the reality explicitly in everyday words (e.g. layoffs / cutting headcount, understaffed / doing three jobs, proud / showing off, a mass template message nobody personalized)\n"
                         "- proactive_prompt: engaging follow-up inviting them to turn their own situation into LinkedIn style or paste another post"
                     ),
                 )

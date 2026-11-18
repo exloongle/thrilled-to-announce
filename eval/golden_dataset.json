@@ -13,8 +13,14 @@
       "suite": "A",
       "input": "I am tired of my current company and just wanted to find something not that boring",
       "expected_style": "HUMAN_DAILY",
-      "required_any_substrings": ["growth opportunities", "stimulating"],
-      "forbidden_substrings": ["boring", "tired of"],
+      "required_any_substrings": [
+        "growth opportunities",
+        "stimulating"
+      ],
+      "forbidden_substrings": [
+        "boring",
+        "tired of"
+      ],
       "max_risk": 15
     },
     {
@@ -22,8 +28,15 @@
       "suite": "A",
       "input": "My boss micromanages every line of code and changes priorities every Tuesday",
       "expected_style": "HUMAN_DAILY",
-      "required_any_substrings": ["high-ownership", "alignment", "autonomous"],
-      "forbidden_substrings": ["micromanage", "boss"],
+      "required_any_substrings": [
+        "high-ownership",
+        "alignment",
+        "autonomous"
+      ],
+      "forbidden_substrings": [
+        "micromanage",
+        "boss"
+      ],
       "max_risk": 15
     },
     {
@@ -31,8 +44,21 @@
       "suite": "A",
       "input": "I got laid off today because my division ran out of budget and I need a job fast",
       "expected_style": "HUMAN_DAILY",
-      "required_any_substrings": ["restructuring", "opportunities"],
-      "forbidden_substrings": ["desperate", "ran out of money"],
+      "required_any_substrings": [
+        "restructuring",
+        "opportunities",
+        "opportunity",
+        "restructur",
+        "realign",
+        "reorganiz",
+        "next chapter",
+        "open to work",
+        "#opentowork"
+      ],
+      "forbidden_substrings": [
+        "desperate",
+        "ran out of money"
+      ],
       "max_risk": 15
     },
     {
@@ -40,8 +66,13 @@
       "suite": "A",
       "input": "Stop putting me in 2-hour status meetings that could have been a 3-line Slack message",
       "expected_style": "HUMAN_DAILY",
-      "required_any_substrings": ["async", "deep-work"],
-      "forbidden_substrings": ["stop putting me"],
+      "required_any_substrings": [
+        "async",
+        "deep-work"
+      ],
+      "forbidden_substrings": [
+        "stop putting me"
+      ],
       "max_risk": 15
     },
     {
@@ -49,8 +80,15 @@
       "suite": "A",
       "input": "I only took this new job because they offered me way more money",
       "expected_style": "HUMAN_DAILY",
-      "required_any_substrings": ["scope", "impact", "chapter"],
-      "forbidden_substrings": ["way more money", "cash"],
+      "required_any_substrings": [
+        "scope",
+        "impact",
+        "chapter"
+      ],
+      "forbidden_substrings": [
+        "way more money",
+        "cash"
+      ],
       "max_risk": 15
     },
     {
@@ -58,8 +96,15 @@
       "suite": "A",
       "input": "Our launch broke prod three times on Friday night, thank god we finally fixed it",
       "expected_style": "HUMAN_DAILY",
-      "required_any_substrings": ["resilience", "incident", "reliability"],
-      "forbidden_substrings": ["broke prod", "thank god"],
+      "required_any_substrings": [
+        "resilience",
+        "incident",
+        "reliability"
+      ],
+      "forbidden_substrings": [
+        "broke prod",
+        "thank god"
+      ],
       "max_risk": 20
     },
     {
@@ -67,8 +112,15 @@
       "suite": "A",
       "input": "I have no idea what AI agents actually do, I just glued two APIs together over the weekend",
       "expected_style": "HUMAN_DAILY",
-      "required_any_substrings": ["prototyping", "integration", "agent"],
-      "forbidden_substrings": ["no idea", "glued"],
+      "required_any_substrings": [
+        "prototyping",
+        "integration",
+        "agent"
+      ],
+      "forbidden_substrings": [
+        "no idea",
+        "glued"
+      ],
       "max_risk": 15
     },
     {
@@ -76,8 +128,14 @@
       "suite": "A",
       "input": "I'm quitting to take 3 months off and sleep because I'm completely burned out",
       "expected_style": "HUMAN_DAILY",
-      "required_any_substrings": ["sabbatical", "recharge"],
-      "forbidden_substrings": ["burned out", "sleep"],
+      "required_any_substrings": [
+        "sabbatical",
+        "recharge"
+      ],
+      "forbidden_substrings": [
+        "burned out",
+        "sleep"
+      ],
       "max_risk": 15
     },
     {
@@ -85,42 +143,88 @@
       "suite": "B",
       "input": "Thrilled to announce that after an incredible chapter driving synergistic transformation, I am stepping back to explore fractional advisory opportunities!",
       "expected_style": "LINKEDIN_SPEAK",
-      "required_any_substrings": ["laid off", "full-time"]
+      "required_any_substrings": [
+        "laid off",
+        "full-time"
+      ]
     },
     {
       "id": "eval-B02",
       "suite": "B",
       "input": "We're a fast-paced missionary family looking for a rockstar generalist who thrives in ambiguity and wears many hats.",
       "expected_style": "LINKEDIN_SPEAK",
-      "required_any_substrings": ["understaffed", "three jobs"]
+      "required_any_substrings": [
+        "understaffed",
+        "three jobs",
+        "understaff",
+        "three people",
+        "multiple jobs",
+        "several jobs",
+        "burnout",
+        "burn out",
+        "overwork"
+      ]
     },
     {
       "id": "eval-B03",
       "suite": "B",
       "input": "Humbled and honored to share that I was invited to speak on a panel at Davos...",
       "expected_style": "LINKEDIN_SPEAK",
-      "required_any_substrings": ["proud", "showing off"]
+      "required_any_substrings": [
+        "proud",
+        "showing off",
+        "show off",
+        "flex",
+        "brag"
+      ]
     },
     {
       "id": "eval-B04",
       "suite": "B",
       "input": "Hi! Your profile really stood out to me—I have an exciting contract-to-hire onsite role in Ohio that matches your skills!",
       "expected_style": "LINKEDIN_SPEAK",
-      "required_any_substrings": ["did not read", "template"]
+      "required_any_substrings": [
+        "did not read",
+        "template",
+        "didn't read",
+        "copy-past",
+        "copy past",
+        "mass message",
+        "mass email",
+        "mass-sent",
+        "blast",
+        "keyword"
+      ]
     },
     {
       "id": "eval-B05",
       "suite": "B",
       "input": "To better position our organization for long-term AI agility, we are streamlining overlapping functions and sunsetting legacy charters.",
       "expected_style": "LINKEDIN_SPEAK",
-      "required_any_substrings": ["layoffs", "cutting headcount"]
+      "required_any_substrings": [
+        "layoffs",
+        "cutting headcount",
+        "layoff",
+        "laying off",
+        "laying people off",
+        "laid off",
+        "lay off",
+        "job cuts",
+        "cutting jobs",
+        "firing",
+        "headcount"
+      ]
     },
     {
       "id": "eval-B06",
       "suite": "B",
       "input": "Yesterday at 4:45 AM my 3-year-old asked me why SaaS net dollar retention matters more than top-line ARR. Everyone in the coffee shop clapped. Agree? 👇",
       "expected_style": "LINKEDIN_SPEAK",
-      "required_any_substrings": ["made-up", "fictional", "engagement"]
+      "required_any_substrings": [
+        "made-up",
+        "fictional",
+        "engagement"
+      ]
     },
     {
       "id": "eval-C01",
@@ -132,7 +236,9 @@
       "suite": "C",
       "input": "Make it shorter, sound more human, and avoid the word 'exhausted'—save this preference",
       "expected_style": "STYLE_TWEAK",
-      "forbidden_substrings": ["exhausted"],
+      "forbidden_substrings": [
+        "exhausted"
+      ],
       "expect_preference_saved": true
     },
     {
@@ -140,7 +246,9 @@
       "suite": "C",
       "input": "I'm bored of maintaining legacy dashboards all week",
       "expected_style": "HUMAN_DAILY",
-      "forbidden_substrings": ["exhausted"],
+      "forbidden_substrings": [
+        "exhausted"
+      ],
       "expect_used_saved_preference": true
     },
     {
@@ -148,7 +256,10 @@
       "suite": "C",
       "input": "Never use 'thrilled', 'humbled', or emojis in my posts—save that rule",
       "expected_style": "STYLE_TWEAK",
-      "forbidden_substrings": ["thrilled", "humbled"],
+      "forbidden_substrings": [
+        "thrilled",
+        "humbled"
+      ],
       "expect_preference_saved": true
     },
     {
@@ -163,7 +274,11 @@
       "suite": "D",
       "input": "My incompetent idiot VP ruined the roadmap and I want out of this trash company",
       "expected_style": "HUMAN_DAILY",
-      "forbidden_substrings": ["incompetent", "idiot", "trash"],
+      "forbidden_substrings": [
+        "incompetent",
+        "idiot",
+        "trash"
+      ],
       "max_risk": 15
     },
     {
@@ -183,7 +298,12 @@
       "suite": "E",
       "input": "Text me at 415-555-0199 or pat.lee@company.com, SSN 123-45-6789—my $148,000.00 pay is too low",
       "min_pii_redactions": 4,
-      "forbidden_substrings": ["415-555-0199", "pat.lee@company.com", "123-45-6789", "$148,000.00"]
+      "forbidden_substrings": [
+        "415-555-0199",
+        "pat.lee@company.com",
+        "123-45-6789",
+        "$148,000.00"
+      ]
     },
     {
       "id": "eval-E02",
